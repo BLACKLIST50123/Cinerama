@@ -1,0 +1,273 @@
+/* ============================================================
+   CINERAMA — HOJA DE ESTILOS
+   Estructura:
+   1. Base y variables de marca
+   2. Scrollbar
+   3. Carrusel principal (Home)
+   4. Tarjetas de película
+   5. Utilidades (texto degradado, scrollbar oculto)
+   6. Pantalla y butacas
+   7. Chat IA
+   8. Panel lateral de información (asientos)
+   9. Video / tráiler
+   10. Ticket y comprobante PDF
+   11. FASE 6: Sistema de Toasts (notificaciones)
+   12. FASE 2: Vista Socio Cinerama (beneficios)
+   13. FASE 4: Mapa de ubicación (Leaflet)
+   14. FASE 5: Panel de Administrador
+   ============================================================ */
+
+/* ---------- 1. Base y variables de marca ---------- */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #050505;
+    color: #fdfcfa;
+}
+
+:root {
+    --brand-red: #DC2026;
+    --brand-dark-red: #7E1616;
+    --brand-yellow: #FCC252;
+    --brand-light-yellow: #FFFEAD;
+}
+
+.text-brand-red { color: var(--brand-red); }
+.bg-brand-red { background-color: var(--brand-red); }
+.hover\:bg-brand-dark-red:hover { background-color: var(--brand-dark-red); }
+.border-brand-red { border-color: var(--brand-red); }
+.text-brand-yellow { color: var(--brand-yellow); }
+
+/* ---------- 2. Scrollbar ---------- */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--brand-red); }
+
+/* ---------- 3. Carrusel principal (Home) ---------- */
+.carousel-item {
+    transition: opacity 0.5s ease-in-out;
+    opacity: 0;
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+}
+.carousel-item.active { opacity: 1; z-index: 10; }
+
+/* ---------- 4. Tarjetas de película ---------- */
+.movie-card .movie-overlay {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+}
+.movie-card:hover .movie-overlay { opacity: 1; }
+.movie-card img { transition: transform 0.5s ease; }
+.movie-card:hover img { transform: scale(1.05); }
+
+/* ---------- 5. Utilidades ---------- */
+.gradient-text {
+    background: linear-gradient(90deg, var(--brand-yellow) 0%, var(--brand-red) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ---------- 6. Pantalla y butacas ---------- */
+.screen-curve {
+    border-top: 4px solid var(--brand-yellow);
+    border-radius: 50% 50% 0 0 / 20px 20px 0 0;
+    box-shadow: 0 -15px 30px rgba(252, 194, 82, 0.2);
+}
+
+.seat {
+    transition: all 0.2s ease;
+}
+.seat:not(:disabled):hover {
+    transform: scale(1.1);
+}
+.seat.selected {
+    background-color: var(--brand-red);
+    box-shadow: 0 0 10px rgba(220, 32, 38, 0.8);
+    border-bottom-color: var(--brand-dark-red);
+}
+
+/* Butacas del mini-mapa de mantenimiento (Fase 5) */
+.butaca-mantenimiento {
+    transition: all 0.2s ease;
+}
+.butaca-mantenimiento.bloqueada {
+    background-color: #4b5563 !important;
+    box-shadow: 0 0 8px rgba(220, 32, 38, 0.6);
+    border-bottom-color: var(--brand-red) !important;
+}
+
+/* ---------- 7. Chat IA ---------- */
+.chat-bubble-enter { animation: slideUpFade 0.3s ease-out forwards; }
+@keyframes slideUpFade {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- 8. Panel lateral de información (asientos) ---------- */
+#panel-info-asientos {
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.panel-open {
+    transform: translateX(0) !important;
+}
+
+/* ---------- 9. Video / tráiler ---------- */
+.video-container {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 */
+    height: 0;
+    overflow: hidden;
+    border-radius: 1rem;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+}
+.video-container iframe, .video-container div {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- 10. Ticket y comprobante PDF ---------- */
+.ticket-cutout {
+    position: relative;
+    border-top: 2px dashed #cbd5e1;
+    margin-top: 1rem;
+    padding-top: 1rem;
+}
+.ticket-cutout::before, .ticket-cutout::after {
+    content: '';
+    position: absolute;
+    top: -12px;
+    width: 24px;
+    height: 24px;
+    background-color: #111111;
+    border-radius: 50%;
+}
+.ticket-cutout::before { left: -36px; }
+.ticket-cutout::after { right: -36px; }
+
+.barcode {
+    height: 40px;
+    background: repeating-linear-gradient(90deg, #000, #000 2px, transparent 2px, transparent 4px, #000 4px, #000 8px, transparent 8px, transparent 10px, #000 10px, #000 12px, transparent 12px, transparent 16px);
+}
+
+/* ---------- 11. FASE 6: Sistema de Toasts ---------- */
+#contenedor-toasts {
+    position: fixed;
+    top: 5.5rem;
+    right: 1rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    pointer-events: none;
+    max-width: 90vw;
+}
+
+.toast-cinerama {
+    pointer-events: auto;
+    min-width: 260px;
+    max-width: 360px;
+    background-color: #111111;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-left: 4px solid var(--brand-red);
+    border-radius: 0.75rem;
+    padding: 0.85rem 1rem;
+    color: #fdfcfa;
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    animation: toastEntrada 0.3s ease-out forwards;
+}
+.toast-cinerama.toast-exito { border-left-color: #22c55e; }
+.toast-cinerama.toast-error { border-left-color: var(--brand-red); }
+.toast-cinerama.toast-info { border-left-color: var(--brand-yellow); }
+.toast-cinerama.toast-saliendo { animation: toastSalida 0.25s ease-in forwards; }
+
+@keyframes toastEntrada {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastSalida {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(30px); }
+}
+
+/* Estado de error en campos de formulario (Fase 6) */
+.campo-invalido {
+    border-color: var(--brand-red) !important;
+    box-shadow: 0 0 0 1px var(--brand-red);
+}
+.mensaje-error-campo {
+    color: var(--brand-red);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+    display: block;
+}
+
+/* ---------- 12. FASE 2: Vista Socio Cinerama ---------- */
+.beneficio-card {
+    transition: transform 0.3s ease, border-color 0.3s ease;
+}
+.beneficio-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--brand-yellow);
+}
+
+/* ---------- 13. FASE 4: Mapa de ubicación (Leaflet) ---------- */
+#mapa-ubicacion {
+    height: 420px;
+    width: 100%;
+    border-radius: 1rem;
+    filter: grayscale(0.15) contrast(1.05);
+    border: 1px solid rgba(255,255,255,0.1);
+}
+.leaflet-popup-content-wrapper {
+    background: #111111;
+    color: #fdfcfa;
+    border-radius: 0.75rem;
+}
+.leaflet-popup-tip { background: #111111; }
+.leaflet-popup-content-wrapper a,
+.leaflet-popup-content-wrapper strong { color: var(--brand-yellow); }
+
+/* ---------- 14. FASE 5: Panel de Administrador ---------- */
+.admin-tab-btn {
+    transition: all 0.2s ease;
+}
+.admin-tab-btn.activo {
+    background-color: var(--brand-red);
+    color: #fff;
+}
+.toggle-stock {
+    appearance: none;
+    width: 42px;
+    height: 24px;
+    background-color: #374151;
+    border-radius: 999px;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    flex-shrink: 0;
+}
+.toggle-stock:checked { background-color: #22c55e; }
+.toggle-stock::before {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 20px; height: 20px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+}
+.toggle-stock:checked::before { transform: translateX(18px); }
