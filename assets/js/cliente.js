@@ -1,256 +1,13 @@
 /* ============================================================================
-   CINERAMA — LÓGICA PRINCIPAL DE LA APLICACIÓN (SPA)
+   CINERAMA — CLIENTE.JS — Todo el flujo de cara al usuario
    ------------------------------------------------------------------------
-   ÍNDICE DE BLOQUES:
-     1.  ESTADO GLOBAL Y CONFIGURACIÓN
-     2.  BASE DE DATOS MOCK (películas, estrenos, snacks, cupones)
-     3.  FASE 6 — SISTEMA DE TOASTS Y VALIDADORES
-     4.  NAVEGACIÓN ENTRE VISTAS (router simple por clases)
-     5.  RENDERIZADO DE INICIO (cartelera / estrenos)
-     6.  DETALLE DE PELÍCULA
-     7.  HORARIOS Y FUNCIONES
-     8.  SELECCIÓN DE ASIENTOS
-     9.  DULCERÍA (incluye Fase 3 — flujo directo sin película)
-     10. CHECKOUT / PAGO (incluye Fase 5 — motor de cupones)
-     11. TICKET Y COMPROBANTE (PDF) + guardado en historial de compras
-     12. AUTENTICACIÓN (login / registro) con validación doble
-     13. FASE 1 — HISTORIAL "MIS COMPRAS" Y MODAL DE PERFIL
-     14. FASE 4 — MODAL DE CONTACTO Y VISTA DE UBICACIÓN (Leaflet)
-     15. FASE 5 — PANEL DE ADMINISTRADOR
-     16. CHATBOT (CineBot IA simulado)
-     17. INICIALIZACIÓN GENERAL (DOMContentLoaded)
+   Parte de la arquitectura modular de Cinerama (Fase 14).
+   Cargado como <script> clásico (no ES module) para funcionar también
+   abriendo index.html directamente con file://, sin necesidad de servidor.
+   Navegación entre vistas, cartelera, detalle, horarios, asientos,
+   dulcería, checkout/pago, ticket, autenticación, mis compras,
+   contacto/ubicación y promociones.
    ============================================================================ */
-
-
-/* ============================================================================
-   1. ESTADO GLOBAL Y CONFIGURACIÓN
-   ============================================================================ */
-
-// Estado del pedido en curso (entradas + dulcería)
-const estadoPedido = {
-    pelicula: null,
-    cine: 'Cinerama Chimbote', // por defecto
-    fecha: null,
-    formato: null,
-    hora: null,
-    asientos: [],   // Array de { id: 'D4', tipoLabel: 'Adulto', precio: 20.0 }
-    carrito: {},    // Objeto contador de snacks { 'combo1': 2 }
-    modoDirecto: false, // FASE 3: true cuando se entra por "Dulcería directa" (sin película)
-    cupon: null      // FASE 5: { codigo, porcentaje } cupón aplicado
-};
-
-// --- SISTEMA DE USUARIOS (localStorage) ---
-let usuarioActual = null;
-const LS_USUARIOS = 'cinerama_usuarios';
-const LS_USUARIO_ACTUAL = 'cinerama_usuario_actual';
-const LS_CUPONES = 'cinerama_cupones';
-const LS_BUTACAS_BLOQUEADAS = 'cinerama_butacas_bloqueadas';
-
-let vistaActualVisible = 'vista-inicio';
-let asientoPendienteId = null;
-let panelAbierto = false;
-
-/* ============================================================================
-   2. BASE DE DATOS MOCK
-   ============================================================================ */
-
-const PRECIOS = {
-    entradas: {
-        'adulto': { label: 'Adulto', precio: 22.0 },
-        'nino': { label: 'Niño', precio: 18.0 },
-        'mayor': { label: 'Adulto Mayor', precio: 18.0 },
-        'preferencial': { label: 'Preferencial', precio: 18.0 }
-    },
-    dulces: {
-        // Combos
-        'c_mega': { nombre: 'Combo Mega Familiar', desc: '2 Canchas Gigantes + 4 Bebidas Grandes + 1 Nachos', precio: 65.0, icono: 'fa-box-open', categoria: 'combo', stock: true },
-        'c_duo': { nombre: 'Combo Dúo', desc: '1 Cancha Gigante + 2 Bebidas Grandes', precio: 40.0, icono: 'fa-heart', categoria: 'combo', stock: true },
-        'c_personal': { nombre: 'Combo Personal', desc: '1 Cancha Mediana + 1 Bebida Mediana', precio: 25.0, icono: 'fa-user', categoria: 'combo', stock: true },
-        // Cancha
-        'p_gigante': { nombre: 'Cancha Gigante', desc: 'Sabor Mantequilla, Salada o Mixta', precio: 22.0, icono: 'fa-popcorn', categoria: 'cancha', stock: true },
-        'p_mediana': { nombre: 'Cancha Mediana', desc: 'Sabor Mantequilla o Salada', precio: 16.0, icono: 'fa-popcorn', categoria: 'cancha', stock: true },
-        // Bebidas
-        'b_grande': { nombre: 'Gaseosa Grande', desc: 'Coca-Cola, Inca Kola, Sprite (32oz)', precio: 12.0, icono: 'fa-glass-water', categoria: 'bebida', stock: true },
-        'b_mediana': { nombre: 'Gaseosa Mediana', desc: 'Coca-Cola, Inca Kola, Sprite (21oz)', precio: 9.0, icono: 'fa-glass-water', categoria: 'bebida', stock: true },
-        'b_agua': { nombre: 'Agua Mineral', desc: 'Con o sin gas (500ml)', precio: 6.0, icono: 'fa-bottle-water', categoria: 'bebida', stock: true },
-        // Snacks
-        's_nachos': { nombre: 'Nachos con Queso', desc: 'Porción personal de nachos crocantes con salsa de queso cheddar calientita', precio: 15.0, icono: 'fa-cheese', categoria: 'snack', stock: true },
-        's_hotdog': { nombre: 'Hot Dog Jumbo', desc: 'Salchicha de res con pan artesanal y cremas a elección', precio: 12.0, icono: 'fa-hotdog', categoria: 'snack', stock: true },
-        's_mms': { nombre: 'M&M\'s', desc: 'Paquete grande M&M\'s Chocolate o Maní', precio: 8.0, icono: 'fa-candy-cane', categoria: 'snack', stock: true },
-        's_snickers': { nombre: 'Snickers', desc: 'Barra de chocolate grande', precio: 6.0, icono: 'fa-cookie', categoria: 'snack', stock: true }
-    }
-};
-
-// FASE 5: Cupones por defecto (se combinan con los creados desde el panel admin)
-const CUPONES_BASE = {
-    'VERANO20': { porcentaje: 20, descripcion: 'Descuento de verano' },
-    'CINERAMA10': { porcentaje: 10, descripcion: 'Bienvenida Cinerama' }
-};
-
-const baseDatosPeliculas = {
-    'spiderman': {
-        id: 'spiderman',
-        titulo: 'Spider-Man: Un Nuevo Día',
-        banner: 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=2070',
-        poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=600',
-        genero: 'Acción / Aventura', clasificacion: 'APT', duracion: '2h 25m',
-        sinopsis: 'Peter Parker se enfrenta a su mayor desafío cuando las barreras entre multiversos colisionan inesperadamente. Viejos enemigos de realidades alternativas llegan a Nueva York, y Peter deberá aliarse con versiones de sí mismo para restaurar el equilibrio antes de que su mundo sea destruido por completo.',
-        trailer: 'https://www.youtube.com/embed/t06RUxPbp_c?si=Rj4D-H8eK0oD932R',
-        horarios: {
-            'Hoy, 26 Ago': [{ formato: '2D Doblada', horas: ['13:00', '15:30', '18:00'] }, { formato: 'SALA XD', horas: ['14:00', '17:00', '20:30'] }],
-            'Jue, 27 Ago': [{ formato: '2D Doblada', horas: ['14:00', '16:30', '19:00'] }, { formato: 'SALA XD', horas: ['15:00', '18:00', '21:30'] }],
-            'Vie, 28 Ago': [{ formato: '2D Subtitulada', horas: ['18:00', '21:00'] }, { formato: 'SALA XD', horas: ['19:30', '22:30'] }]
-        }
-    },
-    'demonio': {
-        id: 'demonio',
-        titulo: 'La Noche del Demonio',
-        banner: 'https://images.unsplash.com/photo-1505635552518-3448ff116af3?q=80&w=2070',
-        poster: 'https://images.unsplash.com/photo-1605806616949-1e87b487cb2a?q=80&w=600',
-        genero: 'Terror / Suspenso', clasificacion: '+14', duracion: '1h 46m',
-        sinopsis: 'Una familia se muda a una nueva casa buscando un nuevo comienzo, solo para descubrir que el lugar está plagado de entidades oscuras. A medida que las manifestaciones empeoran, descubren que el verdadero mal no reside en la casa, sino que ha poseído a su hijo menor.',
-        trailer: 'https://www.youtube.com/embed/zuZnRUxPbp_c',
-        horarios: {
-            'Hoy, 26 Ago': [{ formato: '2D Doblada', horas: ['16:00', '21:00'] }, { formato: 'D-BOX', horas: ['19:00', '23:30'] }],
-            'Jue, 27 Ago': [{ formato: '2D Doblada', horas: ['17:00', '22:00'] }, { formato: 'D-BOX', horas: ['20:00', '23:50'] }]
-        }
-    },
-    'odisea': {
-        id: 'odisea',
-        titulo: 'La Odisea Espacial',
-        banner: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=2070',
-        poster: 'https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=600&auto=format&fit=crop',
-        genero: 'Ciencia Ficción', clasificacion: 'APT', duracion: '2h 52m',
-        sinopsis: 'Un grupo de astronautas se embarca en una misión secreta hacia Júpiter acompañados por HAL 9000, una inteligencia artificial que controla la nave. A mitad de camino, la máquina comienza a exhibir un comportamiento extraño y letal.',
-        trailer: 'https://www.youtube.com/embed/xhRUxPbp_c',
-        horarios: {
-            'Hoy, 26 Ago': [{ formato: '2D Subtitulada', horas: ['14:15', '17:45', '21:15'] }],
-            'Jue, 27 Ago': [{ formato: '2D Subtitulada', horas: ['15:15', '18:45'] }]
-        }
-    }
-};
-
-const baseDatosEstrenos = {
-    'batman': {
-        id: 'batman',
-        titulo: 'El Caballero Oscuro',
-        poster: 'https://images.unsplash.com/photo-1509347528160-9a9e33742cdb?q=80&w=600',
-        banner: 'https://images.unsplash.com/photo-1509347528160-9a9e33742cdb?q=80&w=2070',
-        genero: 'Acción / Thriller', clasificacion: '+14', duracion: '2h 32m',
-        sinopsis: 'Gotham City se enfrenta a una nueva amenaza cuando un criminal anarquista conocido como el Joker emerge para sumir la ciudad en el caos.',
-        trailer: 'https://www.youtube.com/embed/EXeTwQWrcwY'
-    },
-    'avatar': {
-        id: 'avatar',
-        titulo: 'El Planeta Perdido',
-        poster: 'https://images.unsplash.com/photo-1618331835717-801e976710b2?q=80&w=600',
-        banner: 'https://images.unsplash.com/photo-1618331835717-801e976710b2?q=80&w=2070',
-        genero: 'Aventura / Sci-Fi', clasificacion: 'APT', duracion: '3h 10m',
-        sinopsis: 'Exploradores humanos llegan a un planeta exuberante y deben aprender a convivir con la flora y fauna alienígena que lo habita.',
-        trailer: 'https://www.youtube.com/embed/a8Gx8wiNbs8'
-    }
-};
-
-const formatearMoneda = (monto) => `S/ ${monto.toFixed(2)}`;
-
-
-/* ============================================================================
-   3. FASE 6 — SISTEMA DE TOASTS Y VALIDADORES
-   ------------------------------------------------------------------------
-   Validación de doble seguridad: cada formulario valida en el "frontend"
-   (al escribir/enviar) y se vuelve a validar en la función que procesa
-   los datos ("backend" simulado), antes de guardar en localStorage.
-   ============================================================================ */
-
-/**
- * Muestra una notificación tipo toast, sin romper la estética oscura.
- * @param {string} mensaje
- * @param {'exito'|'error'|'info'} tipo
- */
-window.mostrarToast = (mensaje, tipo = 'info') => {
-    let contenedor = document.getElementById('contenedor-toasts');
-    if (!contenedor) {
-        contenedor = document.createElement('div');
-        contenedor.id = 'contenedor-toasts';
-        document.body.appendChild(contenedor);
-    }
-
-    const iconos = { exito: 'fa-circle-check', error: 'fa-circle-exclamation', info: 'fa-circle-info' };
-    const colores = { exito: 'text-green-400', error: 'text-brand-red', info: 'text-brand-yellow' };
-
-    const toast = document.createElement('div');
-    toast.className = `toast-cinerama toast-${tipo}`;
-    toast.innerHTML = `
-        <i class="fa-solid ${iconos[tipo] || iconos.info} ${colores[tipo] || colores.info} mt-0.5"></i>
-        <span class="flex-1">${mensaje}</span>
-    `;
-    contenedor.appendChild(toast);
-
-    setTimeout(() => {
-        toast.classList.add('toast-saliendo');
-        setTimeout(() => toast.remove(), 250);
-    }, 3800);
-};
-
-// --- Validadores atómicos reutilizables ---
-const Validadores = {
-    requerido: (valor) => valor !== null && valor !== undefined && String(valor).trim().length > 0,
-    soloTexto: (valor) => /^[A-Za-zÁÉÍÓÚáéíóúÑñ\s]{2,60}$/.test(String(valor).trim()),
-    correo: (valor) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(valor).trim()),
-    contrasena: (valor) => String(valor).length >= 6,
-    dni: (valor) => /^\d{8}$/.test(String(valor).trim()),
-    ruc: (valor) => /^\d{11}$/.test(String(valor).trim()),
-    telefono: (valor) => /^9\d{8}$/.test(String(valor).trim()),
-    numeroTarjeta: (valor) => /^\d{4}\s?\d{4}\s?\d{4}\s?\d{4}$/.test(String(valor).trim()),
-    vencimientoTarjeta: (valor) => /^(0[1-9]|1[0-2])\/\d{2}$/.test(String(valor).trim()),
-    cvv: (valor) => /^\d{3,4}$/.test(String(valor).trim()),
-    minLength: (valor, min) => String(valor).trim().length >= min
-};
-
-/** Marca visualmente un campo como inválido y muestra un mensaje bajo él. */
-function marcarCampoInvalido(inputEl, mensaje) {
-    if (!inputEl) return;
-    inputEl.classList.add('campo-invalido');
-    let msgEl = inputEl.parentElement.querySelector('.mensaje-error-campo');
-    if (!msgEl) {
-        msgEl = document.createElement('span');
-        msgEl.className = 'mensaje-error-campo';
-        inputEl.parentElement.appendChild(msgEl);
-    }
-    msgEl.textContent = mensaje;
-}
-
-/** Limpia el estado de error visual de un campo. */
-function limpiarCampoInvalido(inputEl) {
-    if (!inputEl) return;
-    inputEl.classList.remove('campo-invalido');
-    const msgEl = inputEl.parentElement.querySelector('.mensaje-error-campo');
-    if (msgEl) msgEl.remove();
-}
-
-/**
- * Ejecuta una lista de reglas { input, prueba, mensaje } y devuelve true
- * solo si TODAS pasan. Aplica estilos de error visual (Fase 6).
- */
-function validarFormulario(reglas) {
-    let esValido = true;
-    let primerError = null;
-    reglas.forEach(regla => {
-        const pasa = regla.prueba();
-        if (!pasa) {
-            esValido = false;
-            marcarCampoInvalido(regla.input, regla.mensaje);
-            if (!primerError) primerError = regla.mensaje;
-        } else {
-            limpiarCampoInvalido(regla.input);
-        }
-    });
-    if (!esValido && primerError) {
-        mostrarToast(primerError, 'error');
-    }
-    return esValido;
-}
-
 
 /* ============================================================================
    4. NAVEGACIÓN ENTRE VISTAS
@@ -268,9 +25,79 @@ function cambiarVista(idDesde, idHacia) {
         elHacia.classList.remove('opacity-0'); // dispara la transición
         window.scrollTo({ top: 0, behavior: 'smooth' });
         vistaActualVisible = idHacia;
+        renderizarStepperCompra(idHacia); // FASE 15: indicador de progreso de la compra
     }, 300);
 }
 window.cambiarVista = cambiarVista;
+
+/* ============================================================================
+   FASE 15 — INDICADOR DE PROGRESO DE LA COMPRA (stepper)
+   ============================================================================ */
+
+/** Secuencia completa de pasos cuando la compra incluye película (entradas + dulcería). */
+const PASOS_COMPRA = [
+    { vista: 'vista-horarios', label: 'Horario', icono: 'fa-clock' },
+    { vista: 'vista-asientos', label: 'Asientos', icono: 'fa-chair' },
+    { vista: 'vista-dulceria', label: 'Dulcería', icono: 'fa-popcorn' },
+    { vista: 'vista-pago', label: 'Pago', icono: 'fa-credit-card' },
+    { vista: 'vista-ticket', label: 'Listo', icono: 'fa-ticket' }
+];
+
+/**
+ * Pinta (o esconde) la barra de progreso fija según la vista a la que se está navegando.
+ * Se llama automáticamente desde cambiarVista(), así que no requiere tocar cada punto de entrada.
+ */
+function renderizarStepperCompra(idVista) {
+    const contenedor = document.getElementById('stepper-compra');
+    const pasosEl = document.getElementById('stepper-compra-pasos');
+    if (!contenedor || !pasosEl) return;
+
+    // FASE 3: en modo "dulcería directa" (sin película) el recorrido es más corto
+    const pasos = estadoPedido.modoDirecto
+        ? PASOS_COMPRA.filter(p => ['vista-dulceria', 'vista-pago', 'vista-ticket'].includes(p.vista))
+        : PASOS_COMPRA;
+
+    const indiceActual = pasos.findIndex(p => p.vista === idVista);
+
+    if (indiceActual === -1) {
+        contenedor.classList.add('hidden');
+        return; // esta vista no forma parte del flujo de compra
+    }
+
+    contenedor.classList.remove('hidden');
+
+    pasosEl.innerHTML = pasos.map((paso, i) => {
+        const completado = i < indiceActual;
+        const actual = i === indiceActual;
+        const claseTexto = completado ? 'text-brand-yellow' : actual ? 'text-white' : 'text-gray-600';
+        const claseCirculo = completado
+            ? 'bg-brand-yellow text-black'
+            : actual
+                ? 'bg-brand-red text-white shadow-[0_0_10px_rgba(220,32,38,0.6)]'
+                : 'bg-dark-700 text-gray-500 border border-white/10';
+        // FASE 17: ícono propio de cada sección (check si ya se completó, ícono referente si no)
+        const contenidoCirculo = completado
+            ? '<i class="fa-solid fa-check text-[11px] md:text-xs"></i>'
+            : `<i class="fa-solid ${paso.icono} text-[11px] md:text-xs"></i>`;
+        return `
+            <div class="flex items-center ${i < pasos.length - 1 ? 'flex-1' : ''}">
+                <div class="flex flex-col items-center gap-1 flex-shrink-0">
+                    <div class="w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-300 ${claseCirculo}">
+                        ${contenidoCirculo}
+                    </div>
+                    <span class="text-[10px] md:text-xs font-semibold ${claseTexto} hidden sm:block whitespace-nowrap">${paso.label}</span>
+                </div>
+                ${i < pasos.length - 1 ? `<div class="flex-1 h-0.5 mx-2 md:mx-3 ${completado ? 'bg-brand-yellow' : 'bg-dark-700'} transition-colors duration-300"></div>` : ''}
+            </div>`;
+    }).join('');
+}
+
+/** FASE 8: muestra/oculta el overlay de carga para operaciones que sí toman tiempo real (ej: procesar pago). */
+function mostrarCargaGlobal(visible) {
+    const overlay = document.getElementById('overlay-carga-vista');
+    if (!overlay) return;
+    overlay.classList.toggle('visible', visible);
+}
 
 // Efecto de scroll en el navbar
 window.addEventListener('scroll', () => {
@@ -430,8 +257,12 @@ const renderizarContenidoHorarios = (pelicula, fechasDisponibles) => {
             <div class="bg-dark-800 rounded-xl p-5 border border-white/5 mb-6">
                 <h4 class="text-lg font-bold text-white mb-4 border-l-4 border-brand-red pl-3">${funcion.formato}</h4>
                 <div class="flex flex-wrap gap-3">`;
-        funcion.horas.forEach(hora => {
-            horariosHTML += `<button onclick="seleccionarHorario(this, '${funcion.formato}', '${hora}')" class="time-btn bg-dark-900 border border-gray-600 hover:border-brand-red hover:bg-brand-red/10 text-white font-bold py-2.5 px-6 rounded-lg transition-colors focus:outline-none">${hora}</button>`;
+        funcion.horas.forEach(horaRaw => {
+            // FASE 7: cada horario ahora trae su propia sala asignada { hora, sala }
+            const { hora, sala } = normalizarFuncionHorario(horaRaw);
+            horariosHTML += `<button onclick="seleccionarHorario(this, '${funcion.formato}', '${hora}', ${sala})" class="time-btn bg-dark-900 border border-gray-600 hover:border-brand-red hover:bg-brand-red/10 text-white font-bold py-2.5 px-6 rounded-lg transition-colors focus:outline-none flex flex-col items-center leading-tight">
+                <span>${hora}</span><span class="text-[10px] text-gray-500 font-normal">Sala ${sala}</span>
+            </button>`;
         });
         horariosHTML += `</div></div>`;
     });
@@ -445,7 +276,12 @@ const renderizarContenidoHorarios = (pelicula, fechasDisponibles) => {
                 <img src="${pelicula.poster}" class="w-full rounded-xl mb-4 shadow-lg">
                 <h2 class="text-2xl font-bold text-white mb-1">${pelicula.titulo}</h2>
                 <p class="text-gray-400 text-sm mb-1">${pelicula.genero} &bull; ${pelicula.duracion}</p>
-                <span class="inline-block bg-white/10 border border-white/20 px-2 py-1 rounded text-xs font-bold text-white mt-2">${pelicula.clasificacion}</span>
+                <span class="inline-block bg-white/10 border border-white/20 px-2 py-1 rounded text-xs font-bold text-white mt-2 mb-4">${pelicula.clasificacion}</span>
+                <!-- FASE 9: sinopsis completa (sin resumir) + acceso al tráiler -->
+                <p class="text-gray-300 text-sm leading-relaxed border-t border-white/10 pt-4">${pelicula.sinopsis}</p>
+                <button onclick="abrirModalTrailer('${pelicula.id}', 'cartelera')" class="w-full mt-5 bg-dark-900 hover:bg-dark-700 border border-white/10 text-white py-2.5 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2">
+                    <i class="fa-brands fa-youtube text-brand-red"></i> Ver Tráiler
+                </button>
             </div>
         </div>
         <div class="w-full lg:w-2/3">
@@ -464,7 +300,7 @@ window.cambiarFechaHorario = (fecha) => {
     renderizarContenidoHorarios(estadoPedido.pelicula, Object.keys(estadoPedido.pelicula.horarios));
 };
 
-window.seleccionarHorario = (btnEl, formato, hora) => {
+window.seleccionarHorario = (btnEl, formato, hora, sala = 1) => {
     document.querySelectorAll('.time-btn').forEach(btn => {
         btn.classList.remove('bg-brand-red', 'border-brand-red');
         btn.classList.add('bg-dark-900', 'border-gray-600');
@@ -474,12 +310,21 @@ window.seleccionarHorario = (btnEl, formato, hora) => {
 
     estadoPedido.formato = formato;
     estadoPedido.hora = hora;
+    estadoPedido.sala = Number(sala) || 1; // FASE 7: sala asociada a esta función
 
     document.getElementById('fh-fecha').textContent = estadoPedido.fecha;
     document.getElementById('fh-formato').textContent = formato;
     document.getElementById('fh-hora').textContent = hora;
     document.getElementById('barra-confirmacion-horario').classList.remove('translate-y-full');
 };
+
+/** FASE 7: normaliza un horario, que puede venir como string (dato antiguo) u objeto { hora, sala }. */
+function normalizarFuncionHorario(horaRaw) {
+    if (horaRaw && typeof horaRaw === 'object') {
+        return { hora: horaRaw.hora, sala: Number(horaRaw.sala) || 1 };
+    }
+    return { hora: horaRaw, sala: 1 };
+}
 
 
 /* ============================================================================
@@ -505,14 +350,14 @@ window.irAAsientos = () => {
                 <i class="fa-regular fa-clock text-brand-red w-4"></i> <span class="font-bold text-white">${estadoPedido.hora}</span>
             </div>
             <div class="flex items-center gap-3 text-sm text-gray-300">
-                <i class="fa-solid fa-location-dot text-brand-red w-4"></i> <span class="font-bold text-white">${estadoPedido.cine}</span>
+                <i class="fa-solid fa-location-dot text-brand-red w-4"></i> <span class="font-bold text-white">${estadoPedido.cine} — Sala ${estadoPedido.sala || 1}</span>
             </div>
         </div>
     `;
 
     document.getElementById('resumen-titulo-pelicula').textContent = estadoPedido.pelicula.titulo;
     document.getElementById('resumen-detalle-pelicula').textContent = `${estadoPedido.fecha} • ${estadoPedido.hora} • ${estadoPedido.formato}`;
-    document.getElementById('resumen-cine').textContent = estadoPedido.cine;
+    document.getElementById('resumen-cine').textContent = `${estadoPedido.cine} — Sala ${estadoPedido.sala || 1}`;
 
     estadoPedido.asientos = [];
     renderizarGridAsientos();
@@ -546,8 +391,7 @@ window.togglePanelInfoAsientos = (forzarEstado = null) => {
 const renderizarGridAsientos = () => {
     const grid = document.getElementById('grid-asientos');
     grid.innerHTML = '';
-    const filas = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-    const columnas = 12;
+    const { filas, columnas, pasillos } = LAYOUT_SALA; // FASE 10: layout compartido con el admin
 
     filas.forEach(fila => {
         const filaDiv = document.createElement('div');
@@ -555,10 +399,10 @@ const renderizarGridAsientos = () => {
         filaDiv.innerHTML = `<div class="w-4 md:w-6 text-center text-gray-500 font-bold text-xs md:text-sm mr-2">${fila}</div>`;
 
         for (let c = 1; c <= columnas; c++) {
-            if (c === 4 || c === 10) filaDiv.innerHTML += `<div class="w-4 md:w-8"></div>`; // pasillos
+            if (pasillos.includes(c)) filaDiv.innerHTML += `<div class="w-4 md:w-8"></div>`; // pasillos
 
             const asientoId = `${fila}${c}`;
-            const ocupado = Math.random() < 0.25 || estaButacaBloqueada(asientoId);
+            const ocupado = Math.random() < 0.25 || estaButacaBloqueada(asientoId, estadoPedido.sala || 1);
 
             if (ocupado) {
                 filaDiv.innerHTML += `<button disabled class="seat w-7 h-7 md:w-10 md:h-10 bg-gray-700 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 opacity-50 cursor-not-allowed"></button>`;
@@ -711,6 +555,26 @@ function aplicarModoDirectoUI() {
     if (bloquePeliculaPago) bloquePeliculaPago.classList.toggle('hidden', esDirecto);
 }
 
+// --- FASE 13: helpers compartidos entre la vista de dulcería del cliente y la del admin (dedup) ---
+
+/** Filtra el catálogo de dulcería por categoría, texto de búsqueda y stock. Usado por cliente y admin. */
+function filtrarProductosDulceria({ categoria = 'all', termino = '', soloConStock = false } = {}) {
+    const terminoNormalizado = (termino || '').trim().toLowerCase();
+    return Object.entries(PRECIOS.dulces).filter(([, p]) => {
+        if (soloConStock && !p.stock) return false;
+        if (categoria && categoria !== 'all' && p.categoria !== categoria) return false;
+        if (terminoNormalizado && !p.nombre.toLowerCase().includes(terminoNormalizado)) return false;
+        return true;
+    });
+}
+
+/** Genera el bloque de ícono (FontAwesome) o imagen personalizada de un producto. Usado por cliente y admin. */
+function renderizarIconoOImagenProducto(prod) {
+    return prod.imagen
+        ? `<img src="${prod.imagen}" class="w-full h-full object-cover">`
+        : `<i class="fa-solid ${prod.icono}"></i>`;
+}
+
 window.renderizarGridDulceria = (filtroCategoria) => {
     document.querySelectorAll('#categorias-dulceria .cat-btn').forEach(btn => {
         btn.classList.remove('text-brand-yellow', 'border-brand-yellow');
@@ -723,16 +587,26 @@ window.renderizarGridDulceria = (filtroCategoria) => {
     }
 
     const grid = document.getElementById('grid-productos');
+
+    // FASE 13: filtro compartido con el admin (misma función, mismo criterio de stock/categoría)
+    const productos = filtrarProductosDulceria({ categoria: filtroCategoria, soloConStock: true });
+
+    // FASE 16: estado vacío si la categoría elegida no tiene productos disponibles
+    if (productos.length === 0) {
+        grid.innerHTML = htmlEstadoVacio({
+            icono: 'fa-popcorn',
+            titulo: 'No hay productos en esta categoría',
+            subtitulo: 'Prueba con otra categoría del menú de arriba, o vuelve más tarde.'
+        });
+        return;
+    }
+
     grid.innerHTML = '';
-
-    for (const [id, prod] of Object.entries(PRECIOS.dulces)) {
-        if (!prod.stock) continue; // FASE 5: respeta el stock activado/desactivado por el admin
-        if (filtroCategoria !== 'all' && prod.categoria !== filtroCategoria) continue;
-
+    productos.forEach(([id, prod]) => {
         grid.innerHTML += `
             <div class="bg-dark-800 rounded-xl border border-white/5 p-4 flex gap-4 hover:border-white/20 transition-colors shadow-lg">
-                <div class="w-20 h-20 bg-dark-900 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-yellow text-3xl">
-                    <i class="fa-solid ${prod.icono}"></i>
+                <div class="w-20 h-20 bg-dark-900 rounded-lg flex items-center justify-center flex-shrink-0 text-brand-yellow text-3xl overflow-hidden">
+                    ${renderizarIconoOImagenProducto(prod)}
                 </div>
                 <div class="flex-grow flex flex-col justify-between">
                     <div>
@@ -750,7 +624,7 @@ window.renderizarGridDulceria = (filtroCategoria) => {
                 </div>
             </div>
         `;
-    }
+    });
 };
 
 window.actualizarCantidadSnack = (id, cambio) => {
@@ -822,8 +696,63 @@ window.irAPago = () => {
 
     aplicarModoDirectoUI();
     recalcularTotalesPago();
+    autocompletarCheckout(); // FASE 7: rellena datos del socio si hay sesión iniciada
     cambiarVista('vista-dulceria', 'vista-pago');
 };
+
+/** FASE 8: inserta un badge "Autocompletado desde tu cuenta" bajo un campo, sin duplicarlo si ya existe. */
+function marcarCampoAutocompletado(inputEl) {
+    if (!inputEl || !inputEl.parentElement) return;
+    if (inputEl.parentElement.querySelector('.badge-autocompletado')) return;
+    const badge = document.createElement('span');
+    badge.className = 'badge-autocompletado';
+    badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> Autocompletado desde tu cuenta';
+    inputEl.parentElement.appendChild(badge);
+}
+
+/** FASE 8: si hay un usuarioActual, autocompleta Nombre, Correo, Documento y tarjeta simulada. */
+function autocompletarCheckout() {
+    if (!usuarioActual) return;
+
+    const campoNombre = document.getElementById('campo-nombre');
+    const campoCorreo = document.getElementById('campo-correo');
+    const campoDni = document.getElementById('campo-dni');
+
+    if (campoNombre && !campoNombre.value) { campoNombre.value = usuarioActual.nombre; marcarCampoAutocompletado(campoNombre); }
+    if (campoCorreo && !campoCorreo.value) { campoCorreo.value = usuarioActual.correo; marcarCampoAutocompletado(campoCorreo); }
+
+    // Simula un DNI estable para el socio (se genera una vez y se guarda en su perfil)
+    if (campoDni && !campoDni.value) {
+        if (!usuarioActual.dniSimulado) {
+            let usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
+            const indice = usuarios.findIndex(u => u.correo === usuarioActual.correo);
+            const dniGenerado = String(Math.floor(10000000 + Math.random() * 89999999));
+            if (indice > -1) {
+                usuarios[indice].dniSimulado = dniGenerado;
+                usuarioActual = usuarios[indice];
+                localStorage.setItem(LS_USUARIOS, JSON.stringify(usuarios));
+                localStorage.setItem(LS_USUARIO_ACTUAL, JSON.stringify(usuarioActual));
+            } else {
+                usuarioActual.dniSimulado = dniGenerado;
+            }
+        }
+        campoDni.value = usuarioActual.dniSimulado;
+        marcarCampoAutocompletado(campoDni);
+    }
+
+    // Si el socio tiene un método de pago guardado (últimos 4 dígitos), simula la tarjeta completa
+    if (usuarioActual.metodoPago) {
+        const campoNumTarjeta = document.getElementById('campo-numero-tarjeta');
+        const campoVenc = document.getElementById('campo-vencimiento-tarjeta');
+        const campoCvv = document.getElementById('campo-cvv-tarjeta');
+        const campoTitular = document.getElementById('campo-titular-tarjeta');
+
+        if (campoNumTarjeta && !campoNumTarjeta.value) { campoNumTarjeta.value = `4551 1234 5678 ${usuarioActual.metodoPago}`; marcarCampoAutocompletado(campoNumTarjeta); }
+        if (campoVenc && !campoVenc.value) campoVenc.value = '12/29';
+        if (campoCvv && !campoCvv.value) campoCvv.value = '123';
+        if (campoTitular && !campoTitular.value) { campoTitular.value = usuarioActual.nombre; marcarCampoAutocompletado(campoTitular); }
+    }
+}
 
 /** Calcula subtotales, aplica el cupón (si existe) y refresca la UI de pago. */
 function recalcularTotalesPago() {
@@ -953,6 +882,20 @@ window.procesarPago = () => {
     // FASE 6: doble validación — se repite aquí como "backend" antes de generar el comprobante
     if (!validarFormularioPago()) return;
 
+    // FASE 8: loading state real mientras se "procesa" el pago (evita doble click y da feedback)
+    const btnPagar = document.getElementById('btn-confirmar-pago');
+    if (btnPagar) { btnPagar.disabled = true; btnPagar.classList.add('opacity-60', 'cursor-not-allowed'); }
+    mostrarCargaGlobal(true);
+
+    setTimeout(() => {
+        finalizarProcesamientoPago();
+        mostrarCargaGlobal(false);
+        if (btnPagar) { btnPagar.disabled = false; btnPagar.classList.remove('opacity-60', 'cursor-not-allowed'); }
+    }, 900);
+};
+
+/** FASE 8: lógica real de generación de ticket/comprobante, separada para poder simular el delay de "procesando...". */
+function finalizarProcesamientoPago() {
     const nombre = document.getElementById('campo-nombre').value || 'Cliente Cinerama';
     const tipoDoc = document.querySelector('input[name="comprobante"]:checked').value;
     const numeroDoc = tipoDoc === 'boleta' ? document.getElementById('campo-dni').value : document.getElementById('campo-ruc').value;
@@ -972,7 +915,8 @@ window.procesarPago = () => {
         document.getElementById('pdf-formato').textContent = estadoPedido.formato.toUpperCase();
         document.getElementById('pdf-fecha').textContent = estadoPedido.fecha;
         document.getElementById('pdf-hora').textContent = estadoPedido.hora;
-        document.getElementById('pdf-cine').textContent = `${estadoPedido.cine.replace('Cinerama ', '')} - Sala ${Math.floor(Math.random() * 5) + 1}`;
+        // FASE 7 (fix): se usa la sala real de la función elegida, ya no un número aleatorio
+        document.getElementById('pdf-cine').textContent = `${estadoPedido.cine.replace('Cinerama ', '')} - Sala ${estadoPedido.sala || 1}`;
         document.getElementById('pdf-asientos').textContent = estadoPedido.asientos.map(s => s.id).join(', ') || '—';
     }
     const codigoTicket = Math.floor(Math.random() * 9000000000) + 1000000000;
@@ -1029,6 +973,11 @@ window.procesarPago = () => {
         tipoDoc,
         numeroDoc
     });
+
+    // FASE 10: registra las butacas como vendidas en su sala real, para que Mantenimiento no pueda tocarlas
+    if (!estadoPedido.modoDirecto && estadoPedido.pelicula && estadoPedido.asientos.length > 0) {
+        registrarVentaAsientos(estadoPedido.sala || 1, estadoPedido.asientos.map(s => s.id));
+    }
 
     mostrarToast('¡Pago procesado con éxito! Aquí está tu ticket.', 'exito');
     cambiarVista('vista-pago', 'vista-ticket');
@@ -1167,18 +1116,54 @@ window.actualizarNavbarAuth = () => {
     const menuUsuario = document.getElementById('menu-usuario');
     const linkAdmin = document.getElementById('link-nav-admin');
 
+    // FASE 7: versiones móviles del navbar (drawer)
+    const menuInvitadoMovil = document.getElementById('menu-invitado-movil');
+    const menuUsuarioMovil = document.getElementById('menu-usuario-movil');
+    const linkAdminMovil = document.getElementById('link-nav-admin-movil');
+
     if (usuarioActual) {
         menuInvitado.classList.add('hidden');
         menuInvitado.classList.remove('flex');
         menuUsuario.classList.remove('hidden');
         menuUsuario.classList.add('flex');
         if (linkAdmin) linkAdmin.classList.toggle('hidden', usuarioActual.rol !== 'admin');
+
+        if (menuInvitadoMovil) menuInvitadoMovil.classList.add('hidden');
+        if (menuUsuarioMovil) { menuUsuarioMovil.classList.remove('hidden'); menuUsuarioMovil.classList.add('flex'); }
+        if (linkAdminMovil) linkAdminMovil.classList.toggle('hidden', usuarioActual.rol !== 'admin');
     } else {
         menuInvitado.classList.remove('hidden');
         menuInvitado.classList.add('flex');
         menuUsuario.classList.add('hidden');
         menuUsuario.classList.remove('flex');
         if (linkAdmin) linkAdmin.classList.add('hidden');
+
+        if (menuInvitadoMovil) menuInvitadoMovil.classList.remove('hidden');
+        if (menuUsuarioMovil) { menuUsuarioMovil.classList.add('hidden'); menuUsuarioMovil.classList.remove('flex'); }
+        if (linkAdminMovil) linkAdminMovil.classList.add('hidden');
+    }
+};
+
+/** FASE 7: abre/cierra el menú hamburguesa (drawer) en dispositivos móviles. */
+window.toggleMenuMovil = (forzarEstado = null) => {
+    const overlay = document.getElementById('overlay-menu-movil');
+    const drawer = document.getElementById('drawer-menu-movil');
+    if (!overlay || !drawer) return;
+
+    menuMovilAbierto = forzarEstado !== null ? forzarEstado : !menuMovilAbierto;
+
+    if (menuMovilAbierto) {
+        overlay.classList.remove('hidden');
+        setTimeout(() => overlay.classList.remove('opacity-0'), 10);
+        drawer.classList.remove('translate-x-full');
+        setTimeout(() => drawer.classList.add('menu-movil-visible'), 10); // FASE 8: dispara stagger de los links
+        document.body.style.overflow = 'hidden';
+    } else {
+        overlay.classList.add('opacity-0');
+        drawer.classList.add('translate-x-full');
+        drawer.classList.remove('menu-movil-visible');
+        document.body.style.overflow = '';
+        setTimeout(() => overlay.classList.add('hidden'), 300);
     }
 };
 
@@ -1206,7 +1191,6 @@ function guardarCompraEnHistorial(compra) {
 /** Lee el arreglo `compras` del usuario actual y lo renderiza en #vista-historial. */
 window.abrirMisCompras = () => {
     const grid = document.getElementById('grid-historial-compras');
-    const mensajeVacio = document.getElementById('mensaje-historial-vacio');
 
     if (!usuarioActual) {
         mostrarToast('Inicia sesión para ver tu historial de compras.', 'error');
@@ -1217,10 +1201,15 @@ window.abrirMisCompras = () => {
     const compras = usuarioActual.compras || [];
 
     if (compras.length === 0) {
-        grid.innerHTML = '';
-        mensajeVacio.classList.remove('hidden');
+        // FASE 16: estado vacío consistente, con acción directa a la cartelera
+        grid.innerHTML = htmlEstadoVacio({
+            icono: 'fa-ticket',
+            titulo: 'Aún no tienes compras registradas',
+            subtitulo: '¡Anímate a ver una película! Cuando compres una entrada o un pedido de dulcería, aparecerá aquí.',
+            textoBoton: 'Ver Cartelera',
+            accionBoton: "cambiarVista('vista-historial', 'vista-inicio')"
+        });
     } else {
-        mensajeVacio.classList.add('hidden');
         grid.innerHTML = compras.map(compra => `
             <div class="bg-dark-800 rounded-2xl border border-white/5 p-5 shadow-xl hover:border-brand-red/50 transition-colors">
                 <div class="flex justify-between items-start mb-3">
@@ -1377,320 +1366,157 @@ window.abrirVistaUbicacion = () => {
 };
 
 
+
+
 /* ============================================================================
-   15. FASE 5 — PANEL DE ADMINISTRADOR
+   17. FASE 7 — VISTA DE PROMOCIONES Y MODAL LEGAL GENÉRICO
    ============================================================================ */
 
-/** Crea la cuenta admin de demostración si aún no existe (solo la primera vez). */
-function asegurarAdminDemo() {
-    let usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
-    if (!usuarios.find(u => u.correo === 'admin@cinerama.com')) {
-        usuarios.push({ nombre: 'Administrador Cinerama', correo: 'admin@cinerama.com', contrasena: 'admin123', rol: 'admin', compras: [], metodoPago: null });
-        localStorage.setItem(LS_USUARIOS, JSON.stringify(usuarios));
-    }
-}
-
-window.abrirPanelAdministrador = () => {
-    if (!usuarioActual || usuarioActual.rol !== 'admin') {
-        mostrarToast('Acceso restringido: solo para administradores.', 'error');
-        return;
-    }
-    cambiarVista(vistaActualVisible, 'vista-administrador');
-    cambiarTabAdmin('cartelera');
+/** Navega a #vista-promociones renderizando primero las tarjetas actualizadas. */
+window.abrirVistaPromociones = () => {
+    renderizarPromociones();
+    cambiarVista(vistaActualVisible, 'vista-promociones');
 };
 
-/** Controla qué pestaña del sidebar del admin está visible. */
-window.cambiarTabAdmin = (tab) => {
-    document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('activo'));
-    const btnActivo = document.getElementById(`tab-btn-${tab}`);
-    if (btnActivo) btnActivo.classList.add('activo');
+/** Arma la cuadrícula de promociones combinando tarjetas fijas + cupones activos del admin. */
+function renderizarPromociones() {
+    const grid = document.getElementById('grid-promociones');
+    if (!grid) return;
 
-    document.querySelectorAll('.admin-tab-panel').forEach(panel => panel.classList.add('hidden'));
-    const panelActivo = document.getElementById(`tab-panel-${tab}`);
-    if (panelActivo) panelActivo.classList.remove('hidden');
+    const promoMartesActiva = localStorage.getItem('cinerama_promo_martes2x1') === 'true';
 
-    if (tab === 'cartelera') renderizarAdminCartelera();
-    if (tab === 'dulceria') renderizarAdminDulceria();
-    if (tab === 'salas') renderizarAdminSalas();
-    if (tab === 'descuentos') renderizarAdminDescuentos();
-    if (tab === 'dashboard') renderizarAdminDashboard();
-};
-
-// --- 15.1 Cartelera: CRUD simulado de películas ---
-function renderizarAdminCartelera() {
-    const lista = document.getElementById('admin-lista-peliculas');
-    lista.innerHTML = Object.values(baseDatosPeliculas).map(p => `
-        <div class="flex items-center justify-between bg-dark-900 border border-white/5 rounded-xl p-3">
-            <div class="flex items-center gap-3">
-                <img src="${p.poster}" class="w-10 h-14 object-cover rounded">
-                <div>
-                    <p class="text-white font-bold text-sm">${p.titulo}</p>
-                    <p class="text-gray-500 text-xs">${p.genero} &bull; ${p.duracion}</p>
-                </div>
+    let html = `
+        <div class="bg-dark-800 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-brand-red/50 transition-colors flex flex-col">
+            <div class="h-40 bg-gradient-to-br from-brand-red to-brand-dark-red flex items-center justify-center">
+                <i class="fa-solid fa-clone text-6xl text-white/90"></i>
             </div>
-            <button onclick="eliminarPeliculaAdmin('${p.id}')" class="text-gray-500 hover:text-brand-red transition-colors"><i class="fa-solid fa-trash"></i></button>
-        </div>
-    `).join('');
-}
-
-window.eliminarPeliculaAdmin = (id) => {
-    delete baseDatosPeliculas[id];
-    renderizarAdminCartelera();
-    renderizarGridsInicio();
-    mostrarToast('Película eliminada de la cartelera (simulado).', 'info');
-};
-
-window.crearPeliculaAdmin = (e) => {
-    e.preventDefault();
-    const titulo = document.getElementById('admin-pelicula-titulo');
-    const genero = document.getElementById('admin-pelicula-genero');
-    const duracion = document.getElementById('admin-pelicula-duracion');
-    const horaFuncion = document.getElementById('admin-pelicula-hora');
-
-    const valido = validarFormulario([
-        { input: titulo, prueba: () => Validadores.minLength(titulo.value, 2), mensaje: 'Ingresa el título de la película.' },
-        { input: genero, prueba: () => Validadores.minLength(genero.value, 2), mensaje: 'Ingresa el género.' },
-        { input: duracion, prueba: () => Validadores.minLength(duracion.value, 2), mensaje: 'Ingresa la duración (ej: 2h 10m).' },
-        { input: horaFuncion, prueba: () => Validadores.requerido(horaFuncion.value), mensaje: 'Selecciona una hora de función.' }
-    ]);
-    if (!valido) return;
-
-    const id = 'peli_' + Date.now();
-    baseDatosPeliculas[id] = {
-        id, titulo: titulo.value.trim(), genero: genero.value.trim(), duracion: duracion.value.trim(),
-        clasificacion: 'APT',
-        poster: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=600',
-        banner: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=2070',
-        sinopsis: 'Sinopsis pendiente de configurar.',
-        trailer: '#',
-        horarios: { 'Hoy, 26 Ago': [{ formato: '2D Doblada', horas: [horaFuncion.value] }] }
-    };
-
-    renderizarAdminCartelera();
-    renderizarGridsInicio();
-    e.target.reset();
-    mostrarToast('Película y horario agregados a la cartelera.', 'exito');
-};
-
-// --- 15.2 Dulcería: gestión de stock ---
-function renderizarAdminDulceria() {
-    const lista = document.getElementById('admin-lista-dulceria');
-    lista.innerHTML = Object.entries(PRECIOS.dulces).map(([id, p]) => `
-        <div class="flex items-center justify-between bg-dark-900 border border-white/5 rounded-xl p-3">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-lg bg-dark-800 flex items-center justify-center text-brand-yellow"><i class="fa-solid ${p.icono}"></i></div>
-                <div>
-                    <p class="text-white font-bold text-sm">${p.nombre}</p>
-                    <p class="text-gray-500 text-xs">${formatearMoneda(p.precio)}</p>
-                </div>
+            <div class="p-6 flex flex-col flex-grow">
+                <span class="inline-block w-max px-3 py-1 ${promoMartesActiva ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'} border text-xs font-bold rounded-full uppercase mb-3">${promoMartesActiva ? 'Activa hoy' : 'Próximamente'}</span>
+                <h3 class="text-xl font-bold text-white mb-2">Martes 2x1 en Entradas 2D</h3>
+                <p class="text-gray-400 text-sm flex-grow">Todos los martes, lleva a un acompañante gratis comprando una entrada 2D en funciones seleccionadas.</p>
             </div>
-            <label class="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                ${p.stock ? 'En stock' : 'Agotado'}
-                <input type="checkbox" class="toggle-stock" ${p.stock ? 'checked' : ''} onchange="toggleStockDulce('${id}', this.checked)">
-            </label>
         </div>
-    `).join('');
-}
+        <div class="bg-dark-800 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-brand-yellow/50 transition-colors flex flex-col">
+            <div class="h-40 bg-gradient-to-br from-brand-yellow to-yellow-600 flex items-center justify-center">
+                <i class="fa-solid fa-heart text-6xl text-black/80"></i>
+            </div>
+            <div class="p-6 flex flex-col flex-grow">
+                <span class="inline-block w-max px-3 py-1 bg-brand-yellow/10 text-brand-yellow border border-brand-yellow/30 text-xs font-bold rounded-full uppercase mb-3">Combo</span>
+                <h3 class="text-xl font-bold text-white mb-2">Combo Pareja</h3>
+                <p class="text-gray-400 text-sm flex-grow">2 entradas + 1 Cancha Gigante para compartir + 2 Bebidas Grandes, a precio especial. Pídelo en Dulcería.</p>
+                <button onclick="abrirDulceriaDirecta()" class="mt-4 w-full bg-brand-yellow hover:bg-yellow-400 text-black py-2.5 rounded-xl font-bold text-sm transition-colors">Ir a Dulcería</button>
+            </div>
+        </div>
+        <div class="bg-dark-800 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-green-500/50 transition-colors flex flex-col">
+            <div class="h-40 bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center">
+                <i class="fa-solid fa-crown text-6xl text-white/90"></i>
+            </div>
+            <div class="p-6 flex flex-col flex-grow">
+                <span class="inline-block w-max px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/30 text-xs font-bold rounded-full uppercase mb-3">Exclusivo</span>
+                <h3 class="text-xl font-bold text-white mb-2">Beneficio Exclusivo Socio Cinerama</h3>
+                <p class="text-gray-400 text-sm flex-grow">Los socios acumulan puntos en cada compra y acceden a preventas exclusivas y una entrada gratis por cumpleaños.</p>
+                <button onclick="cambiarVista(vistaActualVisible, 'vista-beneficios')" class="mt-4 w-full bg-transparent border border-green-500/40 text-green-400 hover:bg-green-500/10 py-2.5 rounded-xl font-bold text-sm transition-colors">Ver Beneficios</button>
+            </div>
+        </div>
+    `;
 
-window.toggleStockDulce = (id, activo) => {
-    PRECIOS.dulces[id].stock = activo;
-    renderizarAdminDulceria();
-    mostrarToast(`${PRECIOS.dulces[id].nombre}: ${activo ? 'activado' : 'desactivado'}.`, 'info');
-};
-
-// --- 15.3 Salas (Mantenimiento): mini-mapa de butacas bloqueables ---
-function estaButacaBloqueada(id) {
-    const bloqueadas = JSON.parse(localStorage.getItem(LS_BUTACAS_BLOQUEADAS)) || [];
-    return bloqueadas.includes(id);
-}
-
-function renderizarAdminSalas() {
-    const grid = document.getElementById('admin-grid-salas');
-    const bloqueadas = JSON.parse(localStorage.getItem(LS_BUTACAS_BLOQUEADAS)) || [];
-    const filas = ['A', 'B', 'C', 'D'];
-    let html = '';
-    filas.forEach(fila => {
-        html += `<div class="flex gap-1.5 justify-center mb-1.5">`;
-        for (let c = 1; c <= 10; c++) {
-            const id = `${fila}${c}`;
-            const bloqueada = bloqueadas.includes(id);
-            html += `<button onclick="toggleButacaMantenimiento('${id}')" class="butaca-mantenimiento ${bloqueada ? 'bloqueada' : ''} seat w-6 h-6 md:w-8 md:h-8 bg-green-600 rounded-t-lg rounded-b-sm border-b-4 border-black/40"></button>`;
-        }
-        html += `</div>`;
+    // Cupones creados por el administrador (Panel Admin > Descuentos)
+    const cuponesGuardados = JSON.parse(localStorage.getItem(LS_CUPONES)) || {};
+    const todosCupones = { ...CUPONES_BASE, ...cuponesGuardados };
+    Object.entries(todosCupones).forEach(([codigo, c]) => {
+        html += `
+        <div class="bg-dark-800 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-brand-red/50 transition-colors flex flex-col">
+            <div class="h-40 bg-gradient-to-br from-dark-700 to-dark-900 flex items-center justify-center border-b border-white/5">
+                <i class="fa-solid fa-tag text-6xl text-brand-red/80"></i>
+            </div>
+            <div class="p-6 flex flex-col flex-grow">
+                <span class="inline-block w-max px-3 py-1 bg-brand-red/10 text-brand-red border border-brand-red/30 text-xs font-bold rounded-full uppercase mb-3">Cupón</span>
+                <h3 class="text-xl font-bold text-white mb-1 font-mono">${codigo}</h3>
+                <p class="text-gray-400 text-sm flex-grow">${c.descripcion || 'Cupón promocional'} — <span class="text-brand-yellow font-bold">-${c.porcentaje}%</span> en tu compra.</p>
+            </div>
+        </div>`;
     });
+
     grid.innerHTML = html;
 }
 
-window.toggleButacaMantenimiento = (id) => {
-    let bloqueadas = JSON.parse(localStorage.getItem(LS_BUTACAS_BLOQUEADAS)) || [];
-    if (bloqueadas.includes(id)) {
-        bloqueadas = bloqueadas.filter(b => b !== id);
-    } else {
-        bloqueadas.push(id);
+// --- Modal Legal genérico (enlaces del footer) ---
+const CONTENIDO_LEGAL = {
+    'terminos': {
+        icono: 'fa-file-contract', titulo: 'Términos y Condiciones',
+        texto: [
+            'El uso de la plataforma Cinerama implica la aceptación de estos términos. Las entradas y productos de dulcería adquiridos son para uso personal y no reembolsable, salvo cancelación de función por parte del cine.',
+            'Cinerama se reserva el derecho de modificar la cartelera, horarios y precios sin previo aviso. Los cupones de descuento aplican únicamente durante su periodo de vigencia y no son acumulables entre sí.'
+        ]
+    },
+    'privacidad': {
+        icono: 'fa-user-shield', titulo: 'Políticas de Privacidad',
+        texto: [
+            'Tus datos (nombre, correo, historial de compras) se almacenan localmente en tu navegador y se utilizan únicamente para mejorar tu experiencia dentro de esta demostración.',
+            'No compartimos tu información con terceros. Puedes solicitar la eliminación de tu cuenta y datos en cualquier momento desde tu perfil.'
+        ]
+    },
+    'reclamaciones': {
+        icono: 'fa-book', titulo: 'Libro de Reclamaciones',
+        texto: [
+            'Conforme a la normativa de protección al consumidor, cuentas con este espacio virtual para registrar tu queja o reclamo sobre nuestros productos y servicios.',
+            'Para presentar un reclamo formal, escríbenos a través del formulario de Contáctenos indicando tus datos, el detalle de tu compra y el motivo de tu reclamo. Te responderemos dentro de los plazos establecidos por ley.'
+        ]
+    },
+    'quienes-somos': {
+        icono: 'fa-film', titulo: '¿Quiénes somos?',
+        texto: [
+            'Cinerama es la cadena de cines líder en Chimbote, comprometida con ofrecer la mejor experiencia audiovisual, tecnología de punta en salas y la dulcería más completa de la región.',
+            'Desde nuestros inicios buscamos acercar el mejor cine nacional e internacional a toda la familia.'
+        ]
+    },
+    'trabaja-con-nosotros': {
+        icono: 'fa-briefcase', titulo: 'Trabaja con Nosotros',
+        texto: [
+            '¿Te apasiona el cine y la atención al cliente? Estamos siempre en búsqueda de talento para nuestro equipo de boletería, dulcería y operaciones.',
+            'Envíanos tu currículum a través del formulario de Contáctenos indicando el puesto de tu interés y nos pondremos en contacto contigo.'
+        ]
     }
-    localStorage.setItem(LS_BUTACAS_BLOQUEADAS, JSON.stringify(bloqueadas));
-    renderizarAdminSalas();
 };
 
-// --- 15.4 Descuentos: creación de cupones y promociones globales ---
-function renderizarAdminDescuentos() {
-    const lista = document.getElementById('admin-lista-cupones');
-    const cuponesGuardados = JSON.parse(localStorage.getItem(LS_CUPONES)) || {};
-    const todos = { ...CUPONES_BASE, ...cuponesGuardados };
+// --- FASE 9: Modal de Tráiler (reutilizable desde Detalle y Horarios) ---
+window.abrirModalTrailer = (peliculaId, tipo = 'cartelera') => {
+    const pelicula = tipo === 'estreno' ? baseDatosEstrenos[peliculaId] : baseDatosPeliculas[peliculaId];
+    if (!pelicula) return;
 
-    lista.innerHTML = Object.entries(todos).map(([codigo, c]) => `
-        <div class="flex items-center justify-between bg-dark-900 border border-white/5 rounded-xl p-3">
-            <div>
-                <p class="text-brand-yellow font-mono font-bold text-sm">${codigo}</p>
-                <p class="text-gray-500 text-xs">${c.descripcion || 'Cupón promocional'}</p>
-            </div>
-            <span class="text-white font-bold">-${c.porcentaje}%</span>
-        </div>
-    `).join('');
+    document.getElementById('trailer-titulo').textContent = `Tráiler — ${pelicula.titulo}`;
+    document.getElementById('trailer-src').textContent = `Src: ${pelicula.trailer || 'No disponible'}`;
 
-    const promoActiva = localStorage.getItem('cinerama_promo_martes2x1') === 'true';
-    const toggle = document.getElementById('admin-toggle-martes2x1');
-    if (toggle) toggle.checked = promoActiva;
-}
-
-window.crearCuponAdmin = (e) => {
-    e.preventDefault();
-    const inputCodigo = document.getElementById('admin-cupon-codigo');
-    const inputPorcentaje = document.getElementById('admin-cupon-porcentaje');
-    const inputDesc = document.getElementById('admin-cupon-desc');
-
-    const valido = validarFormulario([
-        { input: inputCodigo, prueba: () => Validadores.minLength(inputCodigo.value, 3), mensaje: 'El código debe tener al menos 3 caracteres.' },
-        { input: inputPorcentaje, prueba: () => Number(inputPorcentaje.value) > 0 && Number(inputPorcentaje.value) <= 100, mensaje: 'El descuento debe estar entre 1 y 100%.' }
-    ]);
-    if (!valido) return;
-
-    const codigo = inputCodigo.value.trim().toUpperCase();
-    const cuponesGuardados = JSON.parse(localStorage.getItem(LS_CUPONES)) || {};
-    cuponesGuardados[codigo] = { porcentaje: Number(inputPorcentaje.value), descripcion: inputDesc.value.trim() || 'Cupón creado por administrador' };
-    localStorage.setItem(LS_CUPONES, JSON.stringify(cuponesGuardados));
-
-    renderizarAdminDescuentos();
-    e.target.reset();
-    mostrarToast(`Cupón "${codigo}" creado correctamente.`, 'exito');
+    const modal = document.getElementById('modal-trailer');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('trailer-contenido').classList.remove('scale-95'); }, 10);
 };
 
-window.toggleMartes2x1 = (activo) => {
-    localStorage.setItem('cinerama_promo_martes2x1', activo);
-    mostrarToast(`Promoción "Martes 2x1" ${activo ? 'activada' : 'desactivada'} globalmente.`, 'info');
+window.cerrarModalTrailer = () => {
+    const modal = document.getElementById('modal-trailer');
+    modal.classList.add('opacity-0');
+    document.getElementById('trailer-contenido').classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 200);
 };
 
-// --- 15.5 Dashboard: métricas simples ---
-function renderizarAdminDashboard() {
-    const usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
-    let totalTickets = 0;
-    let totalDulces = 0;
-    let totalVentas = 0;
-    let totalCompras = 0;
+window.abrirModalLegal = (clave) => {
+    const info = CONTENIDO_LEGAL[clave];
+    if (!info) return;
 
-    usuarios.forEach(u => {
-        (u.compras || []).forEach(compra => {
-            totalCompras++;
-            totalTickets += (compra.asientos || []).length;
-            totalDulces += (compra.dulces || []).length;
-            totalVentas += compra.total || 0;
-        });
-    });
+    document.getElementById('legal-titulo').textContent = info.titulo;
+    document.getElementById('legal-icono').innerHTML = `<i class="fa-solid ${info.icono} text-2xl text-brand-red"></i>`;
+    document.getElementById('legal-texto').innerHTML = info.texto.map(p => `<p>${p}</p>`).join('');
 
-    document.getElementById('admin-dash-ventas').textContent = formatearMoneda(totalVentas);
-    document.getElementById('admin-dash-compras').textContent = totalCompras;
-    document.getElementById('admin-dash-tickets').textContent = totalTickets;
-    document.getElementById('admin-dash-dulces').textContent = totalDulces;
-}
+    const modal = document.getElementById('modal-legal');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('legal-contenido').classList.remove('scale-95'); }, 10);
+};
+
+window.cerrarModalLegal = () => {
+    const modal = document.getElementById('modal-legal');
+    modal.classList.add('opacity-0');
+    document.getElementById('legal-contenido').classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 200);
+};
 
 
-/* ============================================================================
-   16. CHATBOT (CineBot IA simulado)
-   ============================================================================ */
-
-function inicializarChatbot() {
-    const btnToggleChat = document.getElementById('toggle-chat');
-    const btnCerrarChat = document.getElementById('cerrar-chat');
-    const ventanaChat = document.getElementById('ventana-chat-ia');
-    const inputChat = document.getElementById('entrada-chat');
-    const btnEnviar = document.getElementById('enviar-chat');
-    const contenedorMensajes = document.getElementById('mensajes-chat');
-
-    const toggleChat = () => {
-        const oculto = ventanaChat.classList.contains('hidden');
-        if (oculto) {
-            ventanaChat.classList.remove('hidden');
-            ventanaChat.classList.add('flex');
-            inputChat.focus();
-        } else {
-            ventanaChat.classList.add('hidden');
-            ventanaChat.classList.remove('flex');
-        }
-    };
-    btnToggleChat.addEventListener('click', toggleChat);
-    btnCerrarChat.addEventListener('click', toggleChat);
-
-    const agregarMensaje = (texto, esBot) => {
-        const html = esBot
-            ? `<div class="flex gap-2 chat-bubble-enter">
-                <div class="w-6 h-6 rounded-full bg-brand-red flex-shrink-0 flex items-center justify-center mt-1"><i class="fa-solid fa-robot text-[10px] text-white"></i></div>
-                <div class="bg-dark-700 text-white p-3 rounded-xl rounded-tl-none self-start max-w-[85%] border border-white/5 shadow-sm">${texto}</div>
-            </div>`
-            : `<div class="flex gap-2 chat-bubble-enter justify-end">
-                <div class="bg-brand-red text-white p-3 rounded-xl rounded-tr-none self-end max-w-[85%] shadow-sm">${texto}</div>
-            </div>`;
-        contenedorMensajes.insertAdjacentHTML('beforeend', html);
-        contenedorMensajes.scrollTop = contenedorMensajes.scrollHeight;
-    };
-
-    const procesarChat = () => {
-        const texto = inputChat.value.trim();
-        if (!texto) return;
-
-        agregarMensaje(texto, false);
-        inputChat.value = '';
-
-        setTimeout(() => {
-            let respuesta = "No entendí muy bien. 😅 ¿Quieres saber sobre la cartelera, los precios de las entradas o sobre la dulcería?";
-            const minuscula = texto.toLowerCase();
-
-            if (minuscula.includes('hola') || minuscula.includes('saludos') || minuscula.includes('buenas')) {
-                respuesta = "¡Hola! Bienvenido a Cinerama 🍿. ¿En qué te puedo ayudar? Puedes preguntarme por películas en estreno, precios o los combos de dulcería.";
-            } else if (minuscula.includes('precio') || minuscula.includes('costo') || minuscula.includes('cuanto')) {
-                respuesta = "Nuestras entradas regulares cuestan S/ 22.00 para adultos y S/ 18.00 para niños o adultos mayores. ¿Deseas saber el precio de algún combo?";
-            } else if (minuscula.includes('estreno') || minuscula.includes('cartelera') || minuscula.includes('pelicula') || minuscula.includes('ver')) {
-                respuesta = "Ahora mismo tenemos en cartelera 'Spider-Man: Un Nuevo Día' y 'La Noche del Demonio'. Además, pronto llegará 'El Caballero Oscuro'. ¡Anímate a ver los tráilers en la página principal!";
-            } else if (minuscula.includes('dulce') || minuscula.includes('combo') || minuscula.includes('cancha') || minuscula.includes('popcorn') || minuscula.includes('comida')) {
-                respuesta = "¡La dulcería es lo mejor! 😋 Tenemos el Combo Mega Familiar a S/ 65.00 (2 canchas gigantes, 4 bebidas y nachos). También puedes armar tu pedido con cancha gigante, M&M's, o Hot Dogs.";
-            } else if (minuscula.includes('spiderman') || minuscula.includes('spider')) {
-                respuesta = "¡Excelente elección! 'Spider-Man: Un Nuevo Día' tiene una duración de 2h 25m y es apta para todos. ¡Haz clic en 'Comprar Entradas' en el póster para asegurar tu butaca!";
-            } else if (minuscula.includes('cupon') || minuscula.includes('descuento') || minuscula.includes('promo')) {
-                respuesta = "¡Tenemos cupones activos! Prueba con el código VERANO20 en la vista de pago para obtener un 20% de descuento. 🎟️";
-            }
-            agregarMensaje(respuesta, true);
-        }, 800);
-    };
-
-    btnEnviar.addEventListener('click', procesarChat);
-    inputChat.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') procesarChat();
-    });
-}
-
-
-/* ============================================================================
-   17. INICIALIZACIÓN GENERAL
-   ============================================================================ */
-
-document.addEventListener('DOMContentLoaded', () => {
-    renderizarGridsInicio();
-    asegurarAdminDemo();
-
-    const usuarioGuardado = localStorage.getItem(LS_USUARIO_ACTUAL);
-    if (usuarioGuardado) {
-        usuarioActual = JSON.parse(usuarioGuardado);
-    }
-    actualizarNavbarAuth();
-
-    inicializarChatbot();
-});
