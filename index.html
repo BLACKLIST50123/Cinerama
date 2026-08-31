@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cinerama Perú | Tu Mejor Experiencia de Cine</title>
+    <title>Cinerama Chimbote| Tu Mejor Experiencia de Cine</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Libreria para exportar a PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -31,7 +31,7 @@
     <!-- ============================================================
          NAVBAR
          ============================================================ -->
-    <header id="barra-navegacion" class="fixed w-full z-50 transition-all duration-300 bg-gradient-to-b from-black/80 to-transparent py-4 px-6 md:px-12 flex justify-between items-center">
+    <header id="barra-navegacion" class="fixed top-0 left-0 right-0 w-full z-50 transition-all duration-300 bg-gradient-to-b from-black/80 to-transparent py-4 px-6 md:px-12 flex justify-between items-center">
         <a href="#" class="flex items-center gap-2 group" onclick="cambiarVista(vistaActualVisible, 'vista-inicio'); return false;">
             <div class="relative w-10 h-10 flex items-center justify-center bg-brand-red rounded-lg transform group-hover:rotate-12 transition-transform">
                 <i class="fa-solid fa-film text-white text-xl"></i>
@@ -761,6 +761,7 @@
                                         <input type="text" id="admin-pelicula-duracion" placeholder="Duración (ej: 2h 10m)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
                                         <select id="admin-pelicula-clasificacion" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
                                             <option value="APT">APT</option>
+                                            <option value="APT">APD</option>
                                             <option value="+14">+14</option>
                                             <option value="+18">+18</option>
                                         </select>
@@ -785,31 +786,25 @@
                                     </div>
                                 </div>
 
-                                <!-- Sección 3: Función / Horario -->
-                                <div class="bg-dark-900 border border-white/10 rounded-xl p-3">
-                                    <p class="text-gray-400 text-xs font-bold uppercase mb-2 flex items-center gap-1.5"><i class="fa-solid fa-clock text-brand-red"></i> Función / Horario</p>
-                                    <div class="grid grid-cols-2 gap-3 mb-3">
-                                        <input type="date" id="admin-pelicula-fecha" onchange="refrescarSalaCreacionPelicula()" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
-                                        <input type="text" id="admin-pelicula-formato" list="admin-formatos-comunes" placeholder="Formato (ej: 2D Doblada)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
-                                        <datalist id="admin-formatos-comunes">
-                                            <option value="2D Doblada"><option value="2D Subtitulada"><option value="SALA XD"><option value="D-BOX">
-                                        </datalist>
+                                <!-- Tipo de película: el switch reemplaza al checkbox anterior. -->
+                                <div class="bg-dark-900 border border-white/10 rounded-xl p-4">
+                                    <div class="flex items-center justify-between gap-4">
+                                        <div>
+                                            <p class="text-white text-sm font-bold">Tipo de película</p>
+                                            <p id="admin-pelicula-tipo-mensaje" class="text-gray-400 text-xs mt-1">EN CARTELERA: Debes crear al menos una función.</p>
+                                        </div>
+                                        <label class="toggle-tipo-pelicula" title="Cambiar entre cartelera y próximo estreno">
+                                            <input type="checkbox" id="admin-pelicula-es-estreno" role="switch" aria-describedby="admin-pelicula-tipo-mensaje" onchange="actualizarTipoPeliculaAdmin()">
+                                            <span class="toggle-tipo-pelicula-control" aria-hidden="true"></span>
+                                            <span class="sr-only">Marcar como próximo estreno</span>
+                                        </label>
                                     </div>
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <input type="time" id="admin-pelicula-hora" onchange="refrescarSalaCreacionPelicula()" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
-                                        <select id="admin-pelicula-sala" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red"></select>
-                                    </div>
-                                    <p class="text-gray-500 text-[11px] mt-2">Las salas ya ocupadas en esa fecha y hora aparecen deshabilitadas.</p>
                                 </div>
 
-                                <div>
-                                    <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-                                        <input type="checkbox" id="admin-pelicula-es-estreno" class="accent-brand-yellow w-4 h-4">
-                                        Marcar como "Próximo Estreno" (en vez de Cartelera)
-                                    </label>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <button type="submit" class="w-full bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold transition-colors">Agregar a Cartelera</button>
+                                    <button type="button" id="btn-crear-funciones-nueva-pelicula" onclick="abrirCrearFuncionesNuevaPelicula()" class="w-full bg-brand-yellow hover:bg-yellow-400 text-black py-3 rounded-xl font-bold transition-colors"><i class="fa-solid fa-calendar-plus mr-1"></i> Crear Funciones</button>
                                 </div>
-
-                                <button type="submit" class="w-full bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold transition-colors">Agregar a Cartelera</button>
                             </form>
                         </div>
                         <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl">
@@ -888,30 +883,47 @@
                 <!-- 15.3 Salas (Mantenimiento) -->
                 <div id="tab-panel-salas" class="admin-tab-panel hidden">
                     <h2 class="text-2xl font-bold text-white mb-2">Mantenimiento de Salas</h2>
-                    <p class="text-gray-400 text-sm mb-6">Selecciona una sala y haz clic en una butaca para bloquearla o desbloquearla temporalmente por mantenimiento.</p>
+                    <p class="text-gray-400 text-sm mb-6">Diseña la estructura de cada sala y luego administra el estado operativo de sus butacas.</p>
                     <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 md:p-10 shadow-xl flex flex-col items-center">
                         <div class="w-full max-w-xs mb-4">
                             <label class="block text-gray-400 text-xs font-bold uppercase mb-2 text-center">Sala seleccionada</label>
                             <select id="admin-select-sala" onchange="cambiarSalaMantenimiento(this.value)" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white text-center font-bold focus:outline-none focus:border-brand-red"></select>
                         </div>
                         <div class="flex items-center gap-2 mb-6 bg-dark-900 border border-white/10 rounded-full px-4 py-1.5">
-                            <i class="fa-solid fa-lock text-brand-red text-xs"></i>
-                            <span class="text-gray-300 text-xs font-semibold">Bloqueadas: <span id="admin-contador-bloqueadas" class="contador-bloqueadas text-white font-bold">0</span> / 84</span>
+                            <i id="admin-icono-contador-sala" class="fa-solid fa-chair text-brand-yellow text-xs"></i>
+                            <span id="admin-texto-contador-sala" class="text-gray-300 text-xs font-semibold">Butacas: <span id="admin-contador-bloqueadas" class="contador-bloqueadas text-white font-bold">0</span></span>
+                        </div>
+                        <div class="w-full max-w-xl flex border-b border-white/10 mb-6">
+                            <button id="admin-pestana-estructura" onclick="cambiarPestanaSala('estructura')" class="admin-pestana-sala flex-1 px-4 py-3 text-sm font-bold text-gray-500 border-b-2 border-transparent"><i class="fa-solid fa-table-cells-large mr-2"></i>Dimensiones y Estructura</button>
+                            <button id="admin-pestana-estados" onclick="cambiarPestanaSala('estados')" class="admin-pestana-sala flex-1 px-4 py-3 text-sm font-bold text-brand-yellow border-b-2 border-brand-yellow"><i class="fa-solid fa-screwdriver-wrench mr-2"></i>Estado de Butacas</button>
+                        </div>
+                        <div id="admin-panel-estructura-sala" class="hidden w-full max-w-xl mb-6 bg-dark-900 border border-white/10 rounded-xl p-4">
+                            <p class="text-white font-bold text-sm mb-1">Define El Tamaño Y Distribución:</p>
+                            <p class="text-gray-500 text-xs mb-3">Genera la matriz base y haz clic en una butaca verde para convertirla en pasadizo. Haz clic en el espacio vacío para restaurarla.</p>
+                            <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div><label class="block text-gray-500 text-xs mb-1">Filas</label><input type="number" id="admin-sala-filas" min="1" max="26" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow"></div>
+                                <div><label class="block text-gray-500 text-xs mb-1">Columnas</label><input type="number" id="admin-sala-columnas" min="1" max="30" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow"></div>
+                            </div>
+                            <button type="button" onclick="generarMatriz()" class="w-full bg-brand-yellow hover:bg-yellow-400 text-black py-2.5 rounded-xl font-bold text-sm transition-colors"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Generar Cuadrícula Base</button>
+                        </div>
+                        <div id="admin-panel-estados-sala" class="w-full max-w-xl mb-6 bg-dark-900 border border-white/10 rounded-xl p-4">
+                            <p class="text-white font-bold text-sm mb-1">Cambia Los Estados De Las Butacas Con Cada Click:</p>
+                            <p class="text-gray-500 text-xs">Clic en una butaca visible para alternar: disponible → mantenimiento → accesible. Los pasadizos pertenecen a la estructura y no son editables aquí.</p>
                         </div>
                         <div class="w-full max-w-[420px] mb-8 text-center">
                             <div class="w-full h-8 screen-curve"></div>
                             <span class="text-gray-500 font-bold uppercase tracking-widest text-xs mt-2 block">Pantalla</span>
                         </div>
-                        <div id="admin-grid-salas"></div>
+                        <div id="admin-grid-salas" class="matriz-sala-admin" onclick="clickMatrizEstructura(event)"></div>
                         <div class="mt-8 flex flex-wrap justify-center gap-6 text-sm">
                             <div class="flex items-center gap-2">
                                 <div class="w-5 h-5 bg-green-600 rounded-t-lg rounded-b-sm border-b-2 border-black/50"></div> <span class="text-gray-400">Disponible</span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <div class="w-5 h-5 bg-gray-600 rounded-t-lg rounded-b-sm border-b-2 border-brand-red" style="box-shadow: 0 0 6px rgba(220,32,38,0.6);"></div> <span class="text-gray-400">En mantenimiento</span>
+                                <div class="w-5 h-5 bg-gray-600 rounded-t-lg rounded-b-sm border-b-2 border-brand-red"></div> <span class="text-gray-400">Mantenimiento</span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <div class="w-5 h-5 bg-gray-800 rounded-t-lg rounded-b-sm border-b-2 border-black opacity-60"></div> <span class="text-gray-400">Vendida (no editable)</span>
+                                <div class="w-5 h-5 bg-blue-600 rounded-t-lg rounded-b-sm border-b-2 border-blue-800"></div> <span class="text-gray-400">Accesible</span>
                             </div>
                         </div>
                     </div>

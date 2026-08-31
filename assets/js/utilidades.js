@@ -143,14 +143,59 @@ function formatearFechaAmigable(fechaISO) {
     return `${dias[fecha.getDay()]}, ${fecha.getDate()} ${meses[fecha.getMonth()]}`;
 }
 
+function etiquetaFilaSala(indice) {
+    let etiqueta = '';
+    let numero = indice + 1;
+    while (numero > 0) {
+        const resto = (numero - 1) % 26;
+        etiqueta = String.fromCharCode(65 + resto) + etiqueta;
+        numero = Math.floor((numero - 1) / 26);
+    }
+    return etiqueta;
+}
+
+function crearConfiguracionSala(numero, filas = LAYOUT_SALA.filas.length, columnas = LAYOUT_SALA.columnas) {
+    const asientos = [];
+    for (let f = 0; f < filas; f++) {
+        for (let c = 1; c <= columnas; c++) asientos.push({ f: etiquetaFilaSala(f), c, estado: 'disponible' });
+    }
+    return { id_sala: `sala_${String(numero).padStart(2, '0')}`, nombre: `Sala ${numero}`, filas, columnas, asientos };
+}
+
+/** Lee el nuevo esquema y migra en memoria el formato antiguo { sala: [butacas bloqueadas] }. */
+function obtenerDatosSalas() {
+    const guardado = JSON.parse(localStorage.getItem(LS_SALAS_MANTENIMIENTO));
+    if (guardado && Array.isArray(guardado.salas)) return guardado;
+
+    const salas = [];
+    for (let numero = 1; numero <= NUMERO_TOTAL_SALAS; numero++) {
+        const sala = crearConfiguracionSala(numero);
+        const bloqueadas = guardado && Array.isArray(guardado[String(numero)]) ? guardado[String(numero)] : [];
+        sala.asientos.forEach(asiento => {
+            if (bloqueadas.includes(`${asiento.f}${asiento.c}`)) asiento.estado = 'mantenimiento';
+        });
+        salas.push(sala);
+    }
+    return { salas };
+}
+
+function guardarDatosSalas(datos) {
+    return guardarEnLocalStorageSeguro(LS_SALAS_MANTENIMIENTO, datos);
+}
+
+function obtenerSalaConfigurada(numero = 1) {
+    const datos = obtenerDatosSalas();
+    return datos.salas.find(sala => Number(sala.id_sala.replace('sala_', '')) === Number(numero)) || crearConfiguracionSala(numero);
+}
+
 function obtenerMatrizSalasMantenimiento() {
-    return JSON.parse(localStorage.getItem(LS_SALAS_MANTENIMIENTO)) || {};
+    return obtenerDatosSalas();
 }
 
 function estaButacaBloqueada(id, sala = 1) {
-    const matriz = obtenerMatrizSalasMantenimiento();
-    const bloqueadasDeLaSala = matriz[String(sala)] || [];
-    return bloqueadasDeLaSala.includes(id);
+    const configuracion = obtenerSalaConfigurada(sala);
+    const asiento = configuracion.asientos.find(item => `${item.f}${item.c}` === id);
+    return asiento && asiento.estado === 'mantenimiento';
 }
 
 function registrarVentaAsientos(sala, idsAsientos) {

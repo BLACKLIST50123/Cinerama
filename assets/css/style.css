@@ -29,6 +29,7 @@ body {
     --brand-dark-red: #7E1616;
     --brand-yellow: #FCC252;
     --brand-light-yellow: #FFFEAD;
+    --altura-navbar: 72px;
 }
 
 .text-brand-red { color: var(--brand-red); }
@@ -36,6 +37,20 @@ body {
 .hover\:bg-brand-dark-red:hover { background-color: var(--brand-dark-red); }
 .border-brand-red { border-color: var(--brand-red); }
 .text-brand-yellow { color: var(--brand-yellow); }
+
+/* Navbar and checkout stepper share the same vertical reference. */
+#barra-navegacion {
+    top: 0;
+    left: 0;
+    right: 0;
+    min-height: var(--altura-navbar);
+    z-index: 70;
+}
+
+#stepper-compra {
+    top: var(--altura-navbar);
+    z-index: 60;
+}
 
 /* ---------- 2. Scrollbar ---------- */
 ::-webkit-scrollbar { width: 8px; }
@@ -106,6 +121,38 @@ body {
     border-bottom-color: #111827 !important;
     opacity: 0.55;
     cursor: not-allowed !important;
+}
+
+/* Matrices dinámicas de salas: la misma configuración se usa en admin y cliente. */
+.matriz-sala-admin,
+.matriz-sala-cliente {
+    display: grid;
+    grid-template-columns: repeat(var(--columnas-sala), minmax(1.5rem, 2.5rem));
+    gap: 0.45rem;
+    justify-content: center;
+}
+.butaca-matriz {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem 0.5rem 0.25rem 0.25rem;
+    border-bottom: 3px solid rgba(0,0,0,.45);
+    font-size: .7rem;
+    font-weight: 700;
+    color: rgba(255,255,255,.8);
+    transition: transform .2s ease, filter .2s ease;
+}
+.butaca-matriz:hover { transform: scale(1.08); filter: brightness(1.12); }
+.butaca-matriz.disponible { background: #16a34a; }
+.butaca-matriz.mantenimiento { background: #4b5563; border-bottom-color: var(--brand-red); }
+.butaca-matriz.accesible, .asiento-cliente-accesible { background: #2563eb; border-bottom-color: #1e3a8a; }
+.butaca-matriz.vendida { background: #1f2937; opacity: .6; cursor: not-allowed; }
+.butaca-matriz.pasadizo, .asiento-pasadizo { visibility: hidden; pointer-events: none; }
+.asiento-cliente-no-disponible { background: #374151; opacity: .6; }
+
+@media (min-width: 768px) {
+    .matriz-sala-admin,
+    .matriz-sala-cliente { gap: 0.6rem; }
+    .butaca-matriz { width: 2.5rem; height: 2.5rem; }
 }
 
 /* ---------- 7. Chat IA ---------- */
@@ -277,6 +324,34 @@ body {
     transition: transform 0.2s ease;
 }
 .toggle-stock:checked::before { transform: translateX(18px); }
+
+/* Switch del tipo de película en el alta de cartelera. */
+.toggle-tipo-pelicula { display: inline-flex; cursor: pointer; }
+.toggle-tipo-pelicula input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-tipo-pelicula-control {
+    width: 48px;
+    height: 28px;
+    border-radius: 999px;
+    background: #374151;
+    border: 1px solid rgba(255,255,255,0.12);
+    position: relative;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.toggle-tipo-pelicula-control::after {
+    content: '';
+    width: 20px;
+    height: 20px;
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    transition: transform 0.2s ease;
+}
+.toggle-tipo-pelicula input:checked + .toggle-tipo-pelicula-control { background: var(--brand-yellow); border-color: var(--brand-yellow); }
+.toggle-tipo-pelicula input:checked + .toggle-tipo-pelicula-control::after { transform: translateX(20px); }
+.toggle-tipo-pelicula input:focus-visible + .toggle-tipo-pelicula-control { outline: 2px solid #fff; outline-offset: 3px; }
 
 /* ---------- 15. FASE 8: MEJORAS VISUALES Y UX ---------- */
 

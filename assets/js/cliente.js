@@ -391,27 +391,19 @@ window.togglePanelInfoAsientos = (forzarEstado = null) => {
 const renderizarGridAsientos = () => {
     const grid = document.getElementById('grid-asientos');
     grid.innerHTML = '';
-    const { filas, columnas, pasillos } = LAYOUT_SALA; // FASE 10: layout compartido con el admin
-
-    filas.forEach(fila => {
-        const filaDiv = document.createElement('div');
-        filaDiv.className = 'flex gap-1.5 md:gap-2 justify-center items-center';
-        filaDiv.innerHTML = `<div class="w-4 md:w-6 text-center text-gray-500 font-bold text-xs md:text-sm mr-2">${fila}</div>`;
-
-        for (let c = 1; c <= columnas; c++) {
-            if (pasillos.includes(c)) filaDiv.innerHTML += `<div class="w-4 md:w-8"></div>`; // pasillos
-
-            const asientoId = `${fila}${c}`;
-            const ocupado = Math.random() < 0.25 || estaButacaBloqueada(asientoId, estadoPedido.sala || 1);
-
-            if (ocupado) {
-                filaDiv.innerHTML += `<button disabled class="seat w-7 h-7 md:w-10 md:h-10 bg-gray-700 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 opacity-50 cursor-not-allowed"></button>`;
-            } else {
-                filaDiv.innerHTML += `<button id="asiento-btn-${asientoId}" onclick="clickAsiento('${asientoId}')" class="seat w-7 h-7 md:w-10 md:h-10 bg-green-600 hover:bg-green-500 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-pointer flex justify-center items-end pb-1 text-[8px] md:text-[10px] font-bold text-white/50">${c}</button>`;
-            }
+    const sala = obtenerSalaConfigurada(estadoPedido.sala || 1);
+    const vendidas = obtenerButacasVendidasPorSala(estadoPedido.sala || 1);
+    grid.className = 'matriz-sala-cliente';
+    grid.style.setProperty('--columnas-sala', sala.columnas);
+    grid.innerHTML = sala.asientos.map(asiento => {
+        const asientoId = `${asiento.f}${asiento.c}`;
+        if (asiento.estado === 'pasadizo') return '<span class="asiento-pasadizo" aria-hidden="true"></span>';
+        if (asiento.estado === 'mantenimiento' || vendidas.has(asientoId)) {
+            return `<button disabled title="${asientoId} — ${vendidas.has(asientoId) ? 'Ocupado' : 'En mantenimiento'}" class="seat asiento-cliente-no-disponible w-7 h-7 md:w-10 md:h-10 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-not-allowed">${asiento.c}</button>`;
         }
-        grid.appendChild(filaDiv);
-    });
+        const accesible = asiento.estado === 'accesible';
+        return `<button id="asiento-btn-${asientoId}" data-accesible="${accesible}" onclick="clickAsiento('${asientoId}')" title="${asientoId}${accesible ? ' — Espacio accesible' : ''}" class="seat w-7 h-7 md:w-10 md:h-10 ${accesible ? 'asiento-cliente-accesible' : 'bg-green-600 hover:bg-green-500'} rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-pointer flex justify-center items-end pb-1 text-[8px] md:text-[10px] font-bold text-white/70">${accesible ? '<i class="fa-solid fa-wheelchair text-xs md:text-sm m-auto"></i>' : asiento.c}</button>`;
+    }).join('');
 };
 
 window.clickAsiento = (asientoId) => {
@@ -421,7 +413,8 @@ window.clickAsiento = (asientoId) => {
     if (indiceExistente > -1) {
         estadoPedido.asientos.splice(indiceExistente, 1);
         btn.classList.remove('selected', 'bg-brand-red');
-        btn.classList.add('bg-green-600');
+        if (btn.dataset.accesible === 'true') btn.classList.add('asiento-cliente-accesible');
+        else btn.classList.add('bg-green-600');
         actualizarResumenAsientos();
     } else {
         asientoPendienteId = asientoId;
@@ -1518,5 +1511,3 @@ window.cerrarModalLegal = () => {
     document.getElementById('legal-contenido').classList.add('scale-95');
     setTimeout(() => modal.classList.add('hidden'), 200);
 };
-
-

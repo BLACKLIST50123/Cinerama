@@ -175,21 +175,37 @@ function poblarSelectSalasDisponibles(selectEl, ocupadas, salaPreseleccionada = 
     selectEl.innerHTML = html;
 }
 
-/** Refresca el <select> de sala del formulario rápido "Agregar Película" según la fecha/hora ya elegidas. */
-window.refrescarSalaCreacionPelicula = () => {
-    const fechaInput = document.getElementById('admin-pelicula-fecha');
-    const horaInput = document.getElementById('admin-pelicula-hora');
-    const selectSala = document.getElementById('admin-pelicula-sala');
-    if (!fechaInput || !horaInput || !selectSala) return;
-
-    const fechaAmigable = fechaInput.value ? formatearFechaAmigable(fechaInput.value) : null;
-    const ocupadas = (fechaAmigable && horaInput.value) ? obtenerSalasOcupadas(fechaAmigable, horaInput.value, null) : new Set();
-    const salaPrevia = Number(selectSala.value) || 1;
-    poblarSelectSalasDisponibles(selectSala, ocupadas, salaPrevia);
-};
-
 // Estado de trabajo del modal de horarios: lista plana { fecha, formato, hora, sala } pendiente de guardar
 let horariosPendientesModal = [];
+let funcionesBorradorNuevaPelicula = [];
+let gestorHorariosEsBorrador = false;
+
+function construirHorariosDesdeLista(lista) {
+    const horarios = {};
+    lista.forEach(h => {
+        if (!horarios[h.fecha]) horarios[h.fecha] = [];
+        let funcion = horarios[h.fecha].find(f => f.formato === h.formato);
+        if (!funcion) { funcion = { formato: h.formato, horas: [] }; horarios[h.fecha].push(funcion); }
+        funcion.horas.push({ hora: h.hora, sala: h.sala });
+    });
+    return horarios;
+}
+
+window.actualizarTipoPeliculaAdmin = () => {
+    const esEstreno = document.getElementById('admin-pelicula-es-estreno').checked;
+    const mensaje = document.getElementById('admin-pelicula-tipo-mensaje');
+    const botonFunciones = document.getElementById('btn-crear-funciones-nueva-pelicula');
+
+    if (esEstreno && funcionesBorradorNuevaPelicula.length > 0 && !window.confirm('Al cambiar a Próximo Estreno se descartarán las funciones preparadas. ¿Deseas continuar?')) {
+        document.getElementById('admin-pelicula-es-estreno').checked = false;
+        return;
+    }
+    if (esEstreno) funcionesBorradorNuevaPelicula = [];
+    if (mensaje) mensaje.textContent = esEstreno
+        ? 'PRÓXIMO ESTRENO: Se publicará sin funciones hasta que pase a cartelera.'
+        : 'EN CARTELERA: Debes crear al menos una función.';
+    if (botonFunciones) botonFunciones.classList.toggle('hidden', esEstreno);
+};
 
 /** Refresca el <select> de sala del modal de horarios, considerando choques globales Y los horarios aún no guardados. */
 window.refrescarSalaModalHorarios = () => {
@@ -293,6 +309,7 @@ window.abrirModalHorarios = (peliculaId) => {
     const pelicula = baseDatosPeliculas[peliculaId];
     if (!pelicula) { mostrarToast('Esta película no tiene horarios propios (es un Próximo Estreno).', 'error'); return; }
 
+    gestorHorariosEsBorrador = false;
     document.getElementById('horarios-pelicula-id').value = peliculaId;
     document.getElementById('horarios-pelicula-titulo').textContent = pelicula.titulo;
 
@@ -327,26 +344,51 @@ window.cerrarModalHorarios = () => {
     setTimeout(() => modal.classList.add('hidden'), 200);
 };
 
+/** Abre el gestor antes de guardar una película nueva y conserva sus funciones como borrador. */
+window.abrirCrearFuncionesNuevaPelicula = () => {
+    const titulo = document.getElementById('admin-pelicula-titulo');
+    const esEstreno = document.getElementById('admin-pelicula-es-estreno').checked;
+    if (esEstreno) {
+        mostrarToast('Los próximos estrenos no requieren funciones. Desactiva el switch para programarlas.', 'info');
+        return;
+    }
+    if (!Validadores.minLength(titulo.value, 2)) {
+        validarFormulario([{ input: titulo, prueba: () => Validadores.minLength(titulo.value, 2), mensaje: 'Ingresa el título antes de crear funciones.' }]);
+        return;
+    }
+    gestorHorariosEsBorrador = true;
+    document.getElementById('horarios-pelicula-id').value = '';
+    document.getElementById('horarios-pelicula-titulo').textContent = `${titulo.value.trim()} — funciones por guardar`;
+    horariosPendientesModal = funcionesBorradorNuevaPelicula.map(h => ({ ...h }));
+    renderizarListaHorariosPendientes();
+    document.getElementById('horario-nuevo-fecha').value = '';
+    document.getElementById('horario-nuevo-formato').value = '';
+    document.getElementById('horario-nuevo-hora').value = '';
+    document.getElementById('horario-nuevo-aviso').classList.add('hidden');
+    poblarSelectSalasDisponibles(document.getElementById('horario-nuevo-sala'), new Set(), 1);
+    const modal = document.getElementById('modal-horarios-pelicula');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('horarios-pelicula-contenido').classList.remove('scale-95'); }, 10);
+};
+
 /** Reconstruye el objeto horarios{fecha: [{formato,horas}]} desde la lista de trabajo y lo persiste. */
 window.guardarHorariosPelicula = () => {
-    const id = document.getElementById('horarios-pelicula-id').value;
-    const pelicula = baseDatosPeliculas[id];
-    if (!pelicula) { cerrarModalHorarios(); return; }
-
     if (horariosPendientesModal.length === 0) {
         mostrarToast('Debes dejar al menos un horario programado para esta película.', 'error');
         return;
     }
 
-    const horariosNuevos = {};
-    horariosPendientesModal.forEach(h => {
-        if (!horariosNuevos[h.fecha]) horariosNuevos[h.fecha] = [];
-        let funcion = horariosNuevos[h.fecha].find(f => f.formato === h.formato);
-        if (!funcion) { funcion = { formato: h.formato, horas: [] }; horariosNuevos[h.fecha].push(funcion); }
-        funcion.horas.push({ hora: h.hora, sala: h.sala });
-    });
+    if (gestorHorariosEsBorrador) {
+        funcionesBorradorNuevaPelicula = horariosPendientesModal.map(h => ({ ...h }));
+        cerrarModalHorarios();
+        mostrarToast('Funciones preparadas. Ahora confirma con “Agregar a Cartelera”.', 'exito');
+        return;
+    }
 
-    pelicula.horarios = horariosNuevos;
+    const id = document.getElementById('horarios-pelicula-id').value;
+    const pelicula = baseDatosPeliculas[id];
+    if (!pelicula) { cerrarModalHorarios(); return; }
+    pelicula.horarios = construirHorariosDesdeLista(horariosPendientesModal);
     guardarCarteleraEnStorage();
     renderizarAdminCartelera();
     renderizarGridsInicio();
@@ -365,7 +407,6 @@ window.abrirHorariosDesdeEdicion = () => {
 // --- 15.1 Cartelera: CRUD avanzado (persistente, con imágenes y edición) ---
 function renderizarAdminCartelera() {
     const lista = document.getElementById('admin-lista-peliculas');
-    refrescarSalaCreacionPelicula(); // FASE 12: sala disponible según fecha/hora ya elegidas
 
     // FASE 8: filtro de búsqueda por título o género
     const inputBusqueda = document.getElementById('admin-buscar-peliculas');
@@ -474,30 +515,18 @@ window.crearPeliculaAdmin = async (e) => {
     const clasificacion = document.getElementById('admin-pelicula-clasificacion');
     const sinopsis = document.getElementById('admin-pelicula-sinopsis');
     const trailer = document.getElementById('admin-pelicula-trailer');
-    const fecha = document.getElementById('admin-pelicula-fecha');
-    const formato = document.getElementById('admin-pelicula-formato');
-    const horaFuncion = document.getElementById('admin-pelicula-hora');
-    const salaFuncion = document.getElementById('admin-pelicula-sala');
     const esEstreno = document.getElementById('admin-pelicula-es-estreno').checked;
 
     const valido = validarFormulario([
         { input: titulo, prueba: () => Validadores.minLength(titulo.value, 2), mensaje: 'Ingresa el título de la película.' },
         { input: genero, prueba: () => Validadores.minLength(genero.value, 2), mensaje: 'Ingresa el género.' },
-        { input: duracion, prueba: () => Validadores.minLength(duracion.value, 2), mensaje: 'Ingresa la duración (ej: 2h 10m).' },
-        { input: fecha, prueba: () => esEstreno || Validadores.requerido(fecha.value), mensaje: 'Selecciona la fecha de la función.' },
-        { input: horaFuncion, prueba: () => esEstreno || Validadores.requerido(horaFuncion.value), mensaje: 'Selecciona una hora de función.' }
+        { input: duracion, prueba: () => Validadores.minLength(duracion.value, 2), mensaje: 'Ingresa la duración (ej: 2h 10m).' }
     ]);
     if (!valido) return;
 
-    // FASE 12: la sala no puede estar ya ocupada por otra función en la misma fecha y hora
-    const fechaFuncion = fecha.value ? formatearFechaAmigable(fecha.value) : '';
-    const salaSeleccionada = Number(salaFuncion.value) || 1;
-    if (!esEstreno) {
-        const ocupadas = obtenerSalasOcupadas(fechaFuncion, horaFuncion.value, null);
-        if (ocupadas.has(salaSeleccionada)) {
-            mostrarToast(`La Sala ${salaSeleccionada} ya tiene otra función el ${fechaFuncion} a las ${horaFuncion.value}. Elige otra sala u horario.`, 'error');
-            return;
-        }
+    if (!esEstreno && funcionesBorradorNuevaPelicula.length === 0) {
+        mostrarToast('Antes de agregar una película de cartelera, usa “Crear Funciones” y guarda al menos una función.', 'error');
+        return;
     }
 
     const imagen = await obtenerImagenDesdeFormulario('pelicula');
@@ -519,10 +548,9 @@ window.crearPeliculaAdmin = async (e) => {
     if (esEstreno) {
         baseDatosEstrenos[id] = datosBase;
     } else {
-        const formatoFuncion = formato.value.trim() || '2D Doblada';
         baseDatosPeliculas[id] = {
             ...datosBase,
-            horarios: { [fechaFuncion]: [{ formato: formatoFuncion, horas: [{ hora: horaFuncion.value, sala: salaSeleccionada }] }] }
+            horarios: construirHorariosDesdeLista(funcionesBorradorNuevaPelicula)
         };
     }
 
@@ -530,11 +558,12 @@ window.crearPeliculaAdmin = async (e) => {
     renderizarAdminCartelera();
     renderizarGridsInicio();
     e.target.reset();
-    refrescarSalaCreacionPelicula();
     document.getElementById('admin-pelicula-poster-url').classList.remove('hidden');
     document.getElementById('admin-pelicula-poster-archivo').classList.add('hidden');
+    funcionesBorradorNuevaPelicula = [];
+    actualizarTipoPeliculaAdmin();
     actualizarPreviewImagenAdmin('admin-pelicula-preview', ''); // FASE 8: limpia la vista previa tras guardar
-    mostrarToast(esEstreno ? 'Estreno agregado correctamente.' : 'Película y función agregadas a la cartelera. Usa "Horarios" para añadir más funciones.', 'exito');
+    mostrarToast(esEstreno ? 'Estreno agregado correctamente.' : 'Película y funciones agregadas a la cartelera.', 'exito');
 };
 
 /** FASE 7: abre el modal de edición con los datos actuales de la película/estreno. */
@@ -808,79 +837,120 @@ window.eliminarProductoDulceriaAdmin = (id) => {
     });
 };
 
-// --- 15.3 Salas (Mantenimiento): mapa de butacas independiente por sala (1-8) ---
+// --- 15.3 Salas: matriz dinámica de estructura e inventario operativo ---
+let pestanaSalaActiva = 'estados';
 
+function obtenerIndiceSalaActual(datos) {
+    return datos.salas.findIndex(sala => Number(sala.id_sala.replace('sala_', '')) === salaMantenimientoActual);
+}
 
+function guardarDatos(datos) {
+    return guardarDatosSalas(datos);
+}
 
-// --- FASE 10: registro persistente de butacas realmente vendidas (para no poder mandarlas a mantenimiento) ---
+function actualizarContadorSala(sala) {
+    const contador = document.getElementById('admin-contador-bloqueadas');
+    const texto = document.getElementById('admin-texto-contador-sala');
+    const icono = document.getElementById('admin-icono-contador-sala');
+    const totales = sala.asientos.reduce((acum, asiento) => ({ ...acum, [asiento.estado]: (acum[asiento.estado] || 0) + 1 }), {});
+    if (pestanaSalaActiva === 'estructura') {
+        if (contador) contador.textContent = `${totales.pasadizo || 0} / ${sala.asientos.length}`;
+        if (texto) texto.innerHTML = `Pasadizos: <span id="admin-contador-bloqueadas" class="contador-bloqueadas text-white font-bold">${totales.pasadizo || 0} / ${sala.asientos.length}</span>`;
+        if (icono) icono.className = 'fa-solid fa-road text-brand-yellow text-xs';
+    } else {
+        if (texto) texto.innerHTML = `Disponibles: <b class="text-green-400">${totales.disponible || 0}</b> · Mantenimiento: <b class="text-brand-red">${totales.mantenimiento || 0}</b> · Accesibles: <b class="text-blue-400">${totales.accesible || 0}</b>`;
+        if (icono) icono.className = 'fa-solid fa-chair text-brand-yellow text-xs';
+    }
+}
 
-
+window.cambiarPestanaSala = (pestana) => {
+    pestanaSalaActiva = pestana;
+    document.getElementById('admin-panel-estructura-sala').classList.toggle('hidden', pestana !== 'estructura');
+    document.getElementById('admin-panel-estados-sala').classList.toggle('hidden', pestana !== 'estados');
+    document.getElementById('admin-pestana-estructura').className = `admin-pestana-sala flex-1 px-4 py-3 text-sm font-bold border-b-2 ${pestana === 'estructura' ? 'text-brand-yellow border-brand-yellow' : 'text-gray-500 border-transparent'}`;
+    document.getElementById('admin-pestana-estados').className = `admin-pestana-sala flex-1 px-4 py-3 text-sm font-bold border-b-2 ${pestana === 'estados' ? 'text-brand-yellow border-brand-yellow' : 'text-gray-500 border-transparent'}`;
+    renderizarAdminSalas();
+};
+window.cambiarModoEdicionSala = window.cambiarPestanaSala;
+window.cambiarPestaña = window.cambiarPestanaSala;
 
 function renderizarAdminSalas() {
     const selectSala = document.getElementById('admin-select-sala');
     poblarSelectSalas(selectSala, salaMantenimientoActual);
-
+    const sala = obtenerSalaConfigurada(salaMantenimientoActual);
+    document.getElementById('admin-sala-filas').value = sala.filas;
+    document.getElementById('admin-sala-columnas').value = sala.columnas;
     const grid = document.getElementById('admin-grid-salas');
-    const matriz = obtenerMatrizSalasMantenimiento();
-    const bloqueadas = matriz[String(salaMantenimientoActual)] || [];
-    const vendidas = obtenerButacasVendidasPorSala(salaMantenimientoActual); // FASE 10
-    const { filas, columnas, pasillos } = LAYOUT_SALA; // FASE 10: mismo layout que el cliente
-    let html = '';
-    filas.forEach(fila => {
-        html += `<div class="flex gap-1.5 justify-center mb-1.5">`;
-        for (let c = 1; c <= columnas; c++) {
-            if (pasillos.includes(c)) html += `<div class="w-3 md:w-5"></div>`; // pasillos (misma posición que el cliente)
-
-            const id = `${fila}${c}`;
-            const bloqueada = bloqueadas.includes(id);
-            const vendida = vendidas.has(id);
-
-            if (vendida) {
-                // FASE 10: una butaca vendida no puede pasar a mantenimiento
-                html += `<button onclick="avisarButacaVendida('${id}')" title="Vendida — no disponible para mantenimiento" class="butaca-mantenimiento vendida seat w-6 h-6 md:w-8 md:h-8 rounded-t-lg rounded-b-sm border-b-4"><i class="fa-solid fa-lock text-[8px] text-gray-500"></i></button>`;
-            } else {
-                html += `<button onclick="toggleButacaMantenimiento('${id}')" title="${id}" class="butaca-mantenimiento ${bloqueada ? 'bloqueada' : ''} seat w-6 h-6 md:w-8 md:h-8 bg-green-600 rounded-t-lg rounded-b-sm border-b-4 border-black/40"></button>`;
-            }
-        }
-        html += `</div>`;
-    });
-    grid.innerHTML = html;
-
-    // FASE 8: contador de butacas bloqueadas de la sala activa
-    const contador = document.getElementById('admin-contador-bloqueadas');
-    if (contador) contador.textContent = bloqueadas.length;
+    grid.style.setProperty('--columnas-sala', sala.columnas);
+    const vendidas = obtenerButacasVendidasPorSala(salaMantenimientoActual);
+    grid.innerHTML = sala.asientos.map(asiento => {
+        const id = `${asiento.f}${asiento.c}`;
+        const esVendida = vendidas.has(id);
+        if (asiento.estado === 'pasadizo') return `<button class="butaca-matriz pasadizo" onclick="editarEstructuraButaca('${id}')" title="Pasadizo"></button>`;
+        if (esVendida) return `<button class="butaca-matriz vendida" onclick="avisarButacaVendida('${id}')" title="${id} — Vendida"><i class="fa-solid fa-lock"></i></button>`;
+        const accion = pestanaSalaActiva === 'estructura' ? `editarEstructuraButaca('${id}', event)` : `cambiarEstadoButaca('${id}')`;
+        const icono = asiento.estado === 'accesible' ? '<i class="fa-solid fa-wheelchair"></i>' : asiento.c;
+        return `<button class="butaca-matriz ${asiento.estado}" onclick="${accion}" title="${id}">${icono}</button>`;
+    }).join('');
+    actualizarContadorSala(sala);
 }
 
-/** FASE 10: aviso cuando el admin intenta tocar una butaca ya vendida. */
-window.avisarButacaVendida = (id) => {
-    mostrarToast(`La butaca ${id} ya fue vendida y no puede pasar a mantenimiento.`, 'error');
-};
-
-/** FASE 7: cambia la sala activa en el mantenimiento y refresca su mapa de butacas. */
-window.cambiarSalaMantenimiento = (valor) => {
-    salaMantenimientoActual = Number(valor) || 1;
-    renderizarAdminSalas();
-};
-
-window.toggleButacaMantenimiento = (id) => {
-    // FASE 10: verificación de seguridad extra (por si el DOM quedó desactualizado)
-    const vendidas = obtenerButacasVendidasPorSala(salaMantenimientoActual);
-    if (vendidas.has(id)) { avisarButacaVendida(id); renderizarAdminSalas(); return; }
-
-    const matriz = obtenerMatrizSalasMantenimiento();
-    const clave = String(salaMantenimientoActual);
-    let bloqueadasDeLaSala = matriz[clave] || [];
-
-    if (bloqueadasDeLaSala.includes(id)) {
-        bloqueadasDeLaSala = bloqueadasDeLaSala.filter(b => b !== id);
-    } else {
-        bloqueadasDeLaSala.push(id);
+window.generarMatriz = () => {
+    const filas = Number(document.getElementById('admin-sala-filas').value);
+    const columnas = Number(document.getElementById('admin-sala-columnas').value);
+    if (!Number.isInteger(filas) || filas < 1 || filas > 26 || !Number.isInteger(columnas) || columnas < 1 || columnas > 30) {
+        mostrarToast('Filas debe estar entre 1 y 26 y columnas entre 1 y 30.', 'error');
+        return;
     }
-    matriz[clave] = bloqueadasDeLaSala;
-
-    guardarEnLocalStorageSeguro(LS_SALAS_MANTENIMIENTO, matriz);
+    const salaActual = obtenerSalaConfigurada(salaMantenimientoActual);
+    if (salaActual.asientos.length && !window.confirm('Generar una nueva cuadrícula reemplazará la estructura y los estados actuales de esta sala. ¿Deseas continuar?')) return;
+    const datos = obtenerDatosSalas();
+    datos.salas[obtenerIndiceSalaActual(datos)] = crearConfiguracionSala(salaMantenimientoActual, filas, columnas);
+    guardarDatos(datos);
+    mostrarToast('Cuadrícula base creada. Ahora marca los pasadizos necesarios.', 'exito');
     renderizarAdminSalas();
 };
+
+window.clickMatrizEstructura = (event) => {
+    if (pestanaSalaActiva !== 'estructura' || event.target !== event.currentTarget) return;
+    const sala = obtenerSalaConfigurada(salaMantenimientoActual);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const columna = Math.floor(((event.clientX - rect.left) / rect.width) * sala.columnas);
+    const fila = Math.floor(((event.clientY - rect.top) / rect.height) * sala.filas);
+    const asiento = sala.asientos[fila * sala.columnas + columna];
+    if (asiento) editarEstructuraButaca(`${asiento.f}${asiento.c}`);
+};
+
+window.editarEstructuraButaca = (id, event) => {
+    if (event) event.stopPropagation();
+    if (pestanaSalaActiva !== 'estructura') return;
+    const vendidas = obtenerButacasVendidasPorSala(salaMantenimientoActual);
+    if (vendidas.has(id)) return avisarButacaVendida(id);
+    const datos = obtenerDatosSalas();
+    const sala = datos.salas[obtenerIndiceSalaActual(datos)];
+    const asiento = sala.asientos.find(item => `${item.f}${item.c}` === id);
+    asiento.estado = asiento.estado === 'pasadizo' ? 'disponible' : 'pasadizo';
+    guardarDatos(datos);
+    renderizarAdminSalas();
+};
+
+window.cambiarEstadoButaca = (id) => {
+    if (pestanaSalaActiva !== 'estados') return;
+    const vendidas = obtenerButacasVendidasPorSala(salaMantenimientoActual);
+    if (vendidas.has(id)) return avisarButacaVendida(id);
+    const datos = obtenerDatosSalas();
+    const sala = datos.salas[obtenerIndiceSalaActual(datos)];
+    const asiento = sala.asientos.find(item => `${item.f}${item.c}` === id);
+    if (!asiento || asiento.estado === 'pasadizo') return;
+    const siguiente = { disponible: 'mantenimiento', mantenimiento: 'accesible', accesible: 'disponible' };
+    asiento.estado = siguiente[asiento.estado] || 'disponible';
+    guardarDatos(datos);
+    renderizarAdminSalas();
+};
+
+window.avisarButacaVendida = (id) => mostrarToast(`La butaca ${id} ya fue vendida y no se puede editar.`, 'error');
+window.cambiarSalaMantenimiento = (valor) => { salaMantenimientoActual = Number(valor) || 1; renderizarAdminSalas(); };
+window.renderizarSala = renderizarAdminSalas;
 
 // --- 15.4 Descuentos: creación de cupones y promociones globales ---
 function renderizarAdminDescuentos() {
@@ -952,5 +1022,3 @@ function renderizarAdminDashboard() {
     document.getElementById('admin-dash-tickets').textContent = totalTickets;
     document.getElementById('admin-dash-dulces').textContent = totalDulces;
 }
-
-
