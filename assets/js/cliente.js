@@ -18,6 +18,12 @@ function cambiarVista(idDesde, idHacia) {
     const elHacia = document.getElementById(idHacia);
     if (!elDesde || !elHacia) return;
 
+    // Si estamos saliendo de la vista de detalles, apagamos el tráiler de inmediato
+    if (idDesde === 'vista-detalle-pelicula') {
+        const iframeDetalle = document.getElementById('detalle-iframe');
+        if (iframeDetalle) iframeDetalle.src = '';
+    }
+
     elDesde.classList.add('opacity-0');
     setTimeout(() => {
         elDesde.classList.add('hidden');
@@ -173,6 +179,13 @@ window.abrirDetallePelicula = (peliculaId, tipo = 'cartelera') => {
     const pelicula = tipo === 'cartelera' ? baseDatosPeliculas[peliculaId] : baseDatosEstrenos[peliculaId];
     if (!pelicula) return;
 
+    let urlCorregida = pelicula.trailer || '';
+    if (urlCorregida.includes('watch?v=')) {
+        urlCorregida = urlCorregida.replace('watch?v=', 'embed/');
+    } else if (urlCorregida.includes('youtu.be/')) {
+        urlCorregida = urlCorregida.replace('youtu.be/', 'www.youtube.com/embed/');
+    }
+
     const botonCompraHTML = tipo === 'cartelera'
         ? `<button onclick="abrirHorarios('${pelicula.id}')" class="bg-brand-red hover:bg-brand-dark-red text-white px-8 py-3 rounded-full font-bold text-lg shadow-lg shadow-red-500/40 transition-all flex items-center gap-2 mt-6"><i class="fa-solid fa-ticket"></i> Ver Horarios</button>`
         : `<button disabled class="bg-gray-600 text-gray-400 px-8 py-3 rounded-full font-bold text-lg cursor-not-allowed mt-6"><i class="fa-solid fa-clock"></i> Próximamente</button>`;
@@ -202,11 +215,7 @@ window.abrirDetallePelicula = (peliculaId, tipo = 'cartelera') => {
                 <div class="mb-8">
                     <h3 class="text-xl font-bold text-white mb-4 border-l-4 border-brand-red pl-3">Tráiler Oficial</h3>
                     <div class="video-container max-w-3xl bg-black rounded-2xl border border-white/10">
-                        <div class="flex items-center justify-center flex-col bg-dark-800 text-gray-500">
-                            <i class="fa-brands fa-youtube text-6xl text-white/20 mb-2"></i>
-                            <p class="text-sm">Video Player Placeholder</p>
-                            <p class="text-xs">Src: ${pelicula.trailer}</p>
-                        </div>
+                        <iframe id="detalle-iframe" class="w-full h-full absolute top-0 left-0" src="${urlCorregida}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                     </div>
                 </div>
 
@@ -399,10 +408,10 @@ const renderizarGridAsientos = () => {
         const asientoId = `${asiento.f}${asiento.c}`;
         if (asiento.estado === 'pasadizo') return '<span class="asiento-pasadizo" aria-hidden="true"></span>';
         if (asiento.estado === 'mantenimiento' || vendidas.has(asientoId)) {
-            return `<button disabled title="${asientoId} — ${vendidas.has(asientoId) ? 'Ocupado' : 'En mantenimiento'}" class="seat asiento-cliente-no-disponible w-7 h-7 md:w-10 md:h-10 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-not-allowed">${asiento.c}</button>`;
+            return `<button disabled title="${asientoId} — ${vendidas.has(asientoId) ? 'Ocupado' : 'En mantenimiento'}" class="seat asiento-cliente-no-disponible w-7 h-7 md:w-10 md:h-10 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-not-allowed">${asientoId}</button>`;
         }
         const accesible = asiento.estado === 'accesible';
-        return `<button id="asiento-btn-${asientoId}" data-accesible="${accesible}" onclick="clickAsiento('${asientoId}')" title="${asientoId}${accesible ? ' — Espacio accesible' : ''}" class="seat w-7 h-7 md:w-10 md:h-10 ${accesible ? 'asiento-cliente-accesible' : 'bg-green-600 hover:bg-green-500'} rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-pointer flex justify-center items-end pb-1 text-[8px] md:text-[10px] font-bold text-white/70">${accesible ? '<i class="fa-solid fa-wheelchair text-xs md:text-sm m-auto"></i>' : asiento.c}</button>`;
+        return `<button id="asiento-btn-${asientoId}" data-accesible="${accesible}" onclick="clickAsiento('${asientoId}')" title="${asientoId}${accesible ? ' — Espacio accesible' : ''}" class="seat w-7 h-7 md:w-10 md:h-10 ${accesible ? 'asiento-cliente-accesible' : 'bg-green-600 hover:bg-green-500'} rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-pointer flex justify-center items-end pb-1 text-[8px] md:text-[10px] font-bold text-white/70">${accesible ? '<i class="fa-solid fa-wheelchair text-xs md:text-sm m-auto"></i>' : asientoId}</button>`;
     }).join('');
 };
 
@@ -978,13 +987,29 @@ function finalizarProcesamientoPago() {
 
 window.descargarPDF = (idElemento, nombreArchivo) => {
     const elemento = document.getElementById(idElemento);
+    
+    // 1. Calculamos solo la altura real (el ancho ya es fijo de 350px en tu HTML)
+    const alturaPx = elemento.scrollHeight;
+    
+    // 2. Ancho fijo de ticketera (95mm) y altura "infinita" + 2mm de gracia
+    const anchoMm = 95;
+    const alturaMm = (alturaPx * 0.264583) + 2; 
+
     const opciones = {
-        margin: 10,
+        margin: 0, 
         filename: nombreArchivo,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, windowWidth: 1200 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        image: { type: 'png', quality: 1 }, 
+        html2canvas: {
+            scale: 3, // Subimos un poco la nitidez, 3 es el balance perfecto
+            useCORS: true,
+            scrollX: 0,
+            scrollY: 0
+            // Eliminamos windowWidth y windowHeight para no desfasar el centrado de Tailwind
+        },
+        pagebreak: { mode: 'avoid-all' },
+        jsPDF: { unit: 'mm', format: [anchoMm, alturaMm], orientation: 'portrait' }
     };
+    
     html2pdf().set(opciones).from(elemento).save();
 };
 
@@ -1332,7 +1357,7 @@ window.inicializarMapaUbicacion = () => {
         return;
     }
 
-    const coordenadas = [-9.0709, -78.5930]; // Megaplaza Chimbote
+    const coordenadas = [-9.10216, -78.55728]; // Megaplaza Chimbote
     mapaLeafletInstancia = L.map('mapa-ubicacion').setView(coordenadas, 16);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1476,21 +1501,39 @@ const CONTENIDO_LEGAL = {
 window.abrirModalTrailer = (peliculaId, tipo = 'cartelera') => {
     const pelicula = tipo === 'estreno' ? baseDatosEstrenos[peliculaId] : baseDatosPeliculas[peliculaId];
     if (!pelicula) return;
+    
+    document.getElementById('trailer-titulo').textContent = `Tráiler - ${pelicula.titulo}`;
 
-    document.getElementById('trailer-titulo').textContent = `Tráiler — ${pelicula.titulo}`;
-    document.getElementById('trailer-src').textContent = `Src: ${pelicula.trailer || 'No disponible'}`;
+    // Convertimos el enlace normal a formato "embed" automáticamente
+    let urlBase = pelicula.trailer || '';
+    if (urlBase.includes('watch?v=')) {
+        urlBase = urlBase.replace('watch?v=', 'embed/');
+    } else if (urlBase.includes('youtu.be/')) {
+        urlBase = urlBase.replace('youtu.be/', 'www.youtube.com/embed/');
+    }
+    
+    // Le inyectamos el enlace de YouTube al reproductor (iframe)
+    const iframe = document.getElementById('trailer-iframe');
+    // Le agregamos autoplay para que inicie solito al abrir
+    const urlVideo = urlBase.includes('?') ? `${urlBase}&autoplay=1` : `${urlBase}?autoplay=1`;
+    iframe.src = urlBase ? urlVideo : '';
 
     const modal = document.getElementById('modal-trailer');
     modal.classList.remove('hidden');
     setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('trailer-contenido').classList.remove('scale-95'); }, 10);
-};
+}
 
 window.cerrarModalTrailer = () => {
     const modal = document.getElementById('modal-trailer');
     modal.classList.add('opacity-0');
     document.getElementById('trailer-contenido').classList.add('scale-95');
-    setTimeout(() => modal.classList.add('hidden'), 200);
-};
+    
+    setTimeout(() => { 
+        modal.classList.add('hidden');
+        // NUEVO MUY IMPORTANTE: Borramos el enlace al cerrar para que el video se apague y no suene de fondo
+        document.getElementById('trailer-iframe').src = '';
+    }, 200);
+}
 
 window.abrirModalLegal = (clave) => {
     const info = CONTENIDO_LEGAL[clave];

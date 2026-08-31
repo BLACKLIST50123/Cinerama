@@ -1,0 +1,74 @@
+MEJORAS VISTA CLIENTE:
+1. La opcion Contactos quiero que en lugar de abrir un modal abra una vista con el formulario 
+2. El footer quiero que lo muestres al final de todas las paginas pero que no flote sino estatico al final siempre. Solo ocultala cuando se entre al apartado Admin
+3. Al entrar a dulceria por primera vez sea por navbar o cartelera, que se seleccione automaticamente la opcion todos, se muestra orita pero no marca seleccionado "Todos".
+4. Hay un bug que si selecciono un horario, salgo, entro a otra peli el horario seleccionado anteriormente se queda osea se mantiene el panelsito flotante de abajo que tiene el boton Elegir Asientos, cosa que esta mal.
+5. Vamos a hacer un cambio en lo que es precios de tickets, al seleccionar el asiento este tiene que asumir el precio segun el dia seleccionado (LUNES | MIERCOLES = S/13.00 || MARTES = S/12.00 || JUEVES | VIERNES = S/18.00 || SABADO | DOMINGO | FERIADOS | DIAS NO LABORABLES | PREESTRENOS) La prioridad sera si la pelicula es Preestreno, sino si es feriado o dia no laborable, o sino dependeria del dia.
+6. Agregar temporizador desde que se empieza el flujo de compra y se restablesca cada vez que avanza de etapa, si se termina el tiempo saldra un mensaje de permanencia tipo, si sigue activo pulse continuar para que restablesca el tiempo pero si pasa 30 segundos desde que salio el mensaje de permanencia recien se vuelve al inicio.
+
+VALIDADORES POR AGREGAR:
+1. En dulceria del navbar no se debe de permitir continuar a pago si nose selecciono almenos un producto, que salga un mensaje ahi o toast.
+2. Para todos los campos que sea si o si numeros que este restringido a numeros, si es fechas tipo --/--/-- que tenga su formato establecido para que solo se ingrese los numeros tambien que si se necesita un rango de digitos que se limite a recibir ese numero de digitos no mas. tipo si es dni solo acepta 8 digitos y no se podra escribir mas de 8.
+3. Apartir de la la seleccion de horarios hasta la parte de descarga de boleta, si se sale de alguna vista del flujo de compra saldra un mensaje de confirmacion si es que se desea salir y perder la sesion de compra actual o algo asi, de esa forma se previene que pierda todo el progreso de compra si se pulsa ubicacion por ejemplo o el logo de cinerama o dulceria del navbar pues son vistas apartes que rompen el flujo de compra.
+
+
+MEJORAS VISTA ADMIN:
+1. Quisiera que agregues un apartado donde se muestre calendario, donde el administrador podra seleccionar dias para marcarlos como Feriados o Dias no laborables, TODOS LOS DIAS FERIADOS Y NO LABORABLES ESTARAN PRECARGADOS ASI QUE TIENES QUE AGREGARLO, PERO EL ADMIN MEDIANTE ESTE MEDIO TENDRA LA OPCION DE CAMBIAR SEGUN LA SITUACION.
+2. En Cartelera, el campo de Genero quisiera que sea como un multiseleccionador, donde se elija una o mas etiquetas de genero pero que se guarde en formato tipo Acción / Aventura. El campo Duraccion quisiera que deje ingresar solo numeros pero que este formateado el campo tipo --h --m. En el campo de clasificacion, quisiera que sean 2 en lugar de 1, 1 pa edad (APT, APD, +18, +14) y otro para tipo de lanzamiento (Pre-Estreno, Estreno, Regular), Si el switch esta desactivado (En Cartelera) se habilitan los dos campos de seleccion pa edad y tipo lanzamiento, si esta Activado (Proximo Estreno) Solo queda el selector de Edad. 
+En el boton de Crear Funciones y gestionar horarios el formato tiene que ser un selector multiple (solo 1(2D, 3D), solo 1 (DOBLADA, SUBTITULADA))
+3. Eliminar campo FontAwesome de dulceria.
+4. En Salas que no verifique si el asiento esta vendido o no, pues el admin podra editar sin problemas la distribucion y estado de las butacas, lo que si agrega un mensaje de advertencia al ingresar al apartado y mensajes de confirmacion cuando se quieran guardar los cambios. para eso agrega un boton que diga guardar cambios y metele el mensaje de confirmacion, si es posible reemplazar el alert seria bacan para que no rompa la estetica pero que no se ejecute la accion hasta que se confirme o cancele el mensaje como en el alert pero mas bonito.
+5. Elimina la promocion martes 2x1 tanto en promociones como en Descuentos Admin
+
+VALIDADORES POR AGREGAR:
+1. Los botones de Crear, Borrar y Cancelar deben de tener mensajes de confirmacion.
+2. Revisa validadores en todos los campos y restringe ingreso de valores numericos si es necesario sino no y formatea los campos como corresponda por ejemplo --h --m.
+3. 
+EXTRAS:
+1. Debe ser el ícono oficial del libro azul altamente visible (menú superior o flotante), no un simple enlace de texto en el footer.
+2. Protección de Datos (Ley N° 29733): Es obligatorio añadir un checkbox vacío de aceptación de Políticas de Privacidad en el registro y pago antes de dejar avanzar al usuario.
+3. Margen de Limpieza: Al validar los horarios, agregar un bloqueo automático de 20 a 30 minutos entre funciones en la misma sala para permitir la limpieza física del cine.
+
+
+
+
+ORDENADO POR MODULOS PARA QUE TRABAJES Y ME HAGAS ENTREGABLES EN ZIP:
+📦 Módulo 1: Reestructuración de Vistas y Navegación Cliente
+Solo mover piezas visuales y arreglar la navegación básica, sin tocar lógica de precios.
+Vista de Contacto: Convertir el modal actual de "Contáctenos" en una vista completa (div con hidden) e integrarla al flujo de cambiarVista.
+Footer Inteligente: Sacarlo del flujo actual y fijarlo al final del body. Ocultarlo automáticamente si usuarioActual.rol === 'admin' o si la vista activa es el panel admin.
+Libro de Reclamaciones: Quitar el texto del footer y crear un ícono flotante o fijo en el header con el libro azul (obligatorio por ley peruana), que abra su modal legal.
+Corrección UX Dulcería: Al llamar a abrirDulceriaDirecta() o pasar de asientos a dulcería, el botón de la categoría "Todos" debe recibir las clases CSS de "activo" por defecto.
+Bug de Memoria en Horarios: Limpiar el estado visual de los botones de hora y ocultar la barra flotante de confirmación cada vez que se ejecute abrirHorarios() para una nueva película.
+
+🛒 Módulo 2: Motor de Ventas, Tiempos y Seguridad
+Lógica dura del negocio.
+Jerarquía de Tarifas Dinámicas: Reescribir la asignación de precios al seleccionar un asiento. Orden de evaluación estricto:
+¿Es Pre-estreno (etiqueta en la película)? -> Tarifa pre-estreno.
+¿Es Feriado / No laborable (consultando el calendario del admin)? -> Tarifa fin de semana/feriado (S/18).
+¿Es Jueves/Viernes/Sábado/Domingo? -> S/18.
+¿Es Lunes/Miércoles? -> S/13.
+¿Es Martes? -> S/12.
+Temporizador de Compra: Contador (ej. 5 minutos) que inicie al entrar a asientos. Si llega a 0, lanza modal de "permanencia" (30s de gracia). Si no hay respuesta, limpia estado y manda a inicio. Se reinicia al avanzar de etapa.
+Prevención de Fuga de Sesión: Si el usuario tiene asientos/dulces en el estado y hace clic en enlaces del Navbar que rompen el flujo (Inicio, Promociones, Ubicación), lanzar modal de confirmación antes de salir.
+Validadores:
+No dejar pasar a pago en "Dulcería Directa" si no hay productos seleccionados (Toast/Mensaje).
+Checkbox obligatorio de Aceptación de Políticas de Privacidad en registro y pago.
+
+🎬 Módulo 3: Formularios de Cartelera y Horarios (Panel Admin)
+Desdoblamiento de Clasificación: Dividir en Select de Edad (APT, +14, +18) y Select de Lanzamiento (Regular, Estreno, Pre-Estreno). Si el switch de "Próximo Estreno" está activado, ocultar/deshabilitar el select de Lanzamiento.
+Selectores Múltiples: Cambiar inputs de Género y Formato/Idioma por selectores múltiples (tags) que guarden concatenado (ej. "Acción / Aventura" o "2D / Doblada").
+Duración Formateada: Restringir input a números y formatear en tiempo real como XXh XXm.
+Margen de Limpieza: Al validar choque de horarios, sumar duración de la película + 30 min de limpieza. Bloquear si el nuevo horario pisa ese bloque en la misma sala.
+
+🛠️ Módulo 4: Salas, Calendario y Dulcería (Panel Admin)
+Calendario de Feriados: Nuevo tab en Admin. Debe tener una constante FERIADOS_FIJOS precargada. Añadir UI para que el admin agregue/quite fechas excepcionales y las guarde en localStorage.
+Mantenimiento de Salas: Permitir al admin editar distribución y estado de butacas sin verificar si están vendidas. Agregar un botón "Guardar Cambios" con modal de confirmación y advertencias previas al entrar al apartado.
+Limpieza Dulcería: Eliminar el input FontAwesome (usaremos solo imágenes) y eliminar toda la lógica/UI de la promoción "Martes 2x1" (se maneja en el tarifario del Módulo 2).
+
+🛡️ Módulo 5: Estandarización de Inputs y Modales (Global)
+Modales Custom: Reemplazar alert() y confirm() nativos por modales Tailwind (Guardar cambios, Eliminar producto, Cancelar operación, etc.).
+Restricciones de Teclado:
+Inputs numéricos: Solo números.
+DNI: Máximo 8 dígitos, solo números.
+Fechas: Formato estricto --/--/--.

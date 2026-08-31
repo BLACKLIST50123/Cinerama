@@ -889,7 +889,7 @@ function renderizarAdminSalas() {
         if (asiento.estado === 'pasadizo') return `<button class="butaca-matriz pasadizo" onclick="editarEstructuraButaca('${id}')" title="Pasadizo"></button>`;
         if (esVendida) return `<button class="butaca-matriz vendida" onclick="avisarButacaVendida('${id}')" title="${id} — Vendida"><i class="fa-solid fa-lock"></i></button>`;
         const accion = pestanaSalaActiva === 'estructura' ? `editarEstructuraButaca('${id}', event)` : `cambiarEstadoButaca('${id}')`;
-        const icono = asiento.estado === 'accesible' ? '<i class="fa-solid fa-wheelchair"></i>' : asiento.c;
+        const icono = asiento.estado === 'accesible' ? '<i class="fa-solid fa-wheelchair"></i>' : id;
         return `<button class="butaca-matriz ${asiento.estado}" onclick="${accion}" title="${id}">${icono}</button>`;
     }).join('');
     actualizarContadorSala(sala);

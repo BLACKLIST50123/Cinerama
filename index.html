@@ -507,7 +507,7 @@
 
                 <!-- Ticket Virtual PDF -->
                 <div class="flex flex-col items-center w-full max-w-sm">
-                    <div id="ticket-imprimible" class="bg-[#fdfcfa] w-full rounded-2xl shadow-2xl overflow-hidden border border-gray-200 text-black">
+                    <div id="ticket-imprimible" class="bg-[#fdfcfa] w-[350px] rounded-2xl shadow-2xl overflow-hidden border border-gray-200 text-black">
                         <div class="bg-brand-red text-white p-4 flex justify-between items-center">
                             <span class="font-bold tracking-widest text-lg">CINERAMA</span>
                             <i class="fa-solid fa-film text-xl"></i>
@@ -544,7 +544,7 @@
 
                 <!-- Boleta/Factura PDF -->
                 <div class="flex flex-col items-center w-full max-w-sm">
-                    <div id="comprobante-imprimible" class="bg-white w-full shadow-2xl p-6 border-t-8 border-gray-800 text-black font-mono text-sm relative">
+                    <div id="comprobante-imprimible" class="bg-white w-[350px] shadow-2xl p-6 border-t-8 border-gray-800 text-black font-mono text-sm relative">
                         <div class="text-center border-b border-dashed border-gray-400 pb-4 mb-4">
                             <h2 class="text-xl font-bold uppercase tracking-wider">Cinerama S.A.C.</h2>
                             <p>RUC: 20512345678</p>
@@ -761,9 +761,11 @@
                                         <input type="text" id="admin-pelicula-duracion" placeholder="Duración (ej: 2h 10m)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
                                         <select id="admin-pelicula-clasificacion" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
                                             <option value="APT">APT</option>
-                                            <option value="APT">APD</option>
-                                            <option value="+14">+14</option>
+                                            <option value="APD">APD</option>
                                             <option value="+18">+18</option>
+                                            <option value="+14">+14</option>
+                                            <option value="PRE-ESTRENO">PRE-ESTRENO</option>
+                                            <option value="ESTRENO">ESTRENO</option>
                                         </select>
                                     </div>
                                     <textarea id="admin-pelicula-sinopsis" rows="3" placeholder="Sinopsis" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red resize-none"></textarea>
@@ -897,7 +899,7 @@
                             <button id="admin-pestana-estructura" onclick="cambiarPestanaSala('estructura')" class="admin-pestana-sala flex-1 px-4 py-3 text-sm font-bold text-gray-500 border-b-2 border-transparent"><i class="fa-solid fa-table-cells-large mr-2"></i>Dimensiones y Estructura</button>
                             <button id="admin-pestana-estados" onclick="cambiarPestanaSala('estados')" class="admin-pestana-sala flex-1 px-4 py-3 text-sm font-bold text-brand-yellow border-b-2 border-brand-yellow"><i class="fa-solid fa-screwdriver-wrench mr-2"></i>Estado de Butacas</button>
                         </div>
-                        <div id="admin-panel-estructura-sala" class="hidden w-full max-w-xl mb-6 bg-dark-900 border border-white/10 rounded-xl p-4">
+                        <div id="admin-panel-estructura-sala" class="hidden w-full max-w-xl mb-6 bg-dark-900 border border-white/10     rounded-xl p-4">
                             <p class="text-white font-bold text-sm mb-1">Define El Tamaño Y Distribución:</p>
                             <p class="text-gray-500 text-xs mb-3">Genera la matriz base y haz clic en una butaca verde para convertirla en pasadizo. Haz clic en el espacio vacío para restaurarla.</p>
                             <div class="grid grid-cols-2 gap-3 mb-3">
@@ -1314,11 +1316,8 @@
             <button onclick="cerrarModalTrailer()" class="absolute -top-10 right-0 text-white/70 hover:text-white"><i class="fa-solid fa-xmark text-2xl"></i></button>
             <h3 id="trailer-titulo" class="text-white font-bold text-lg mb-3"></h3>
             <div class="video-container bg-black rounded-2xl border border-white/10 overflow-hidden">
-                <div id="trailer-video-placeholder" class="flex items-center justify-center flex-col bg-dark-800 text-gray-500">
-                    <i class="fa-brands fa-youtube text-6xl text-white/20 mb-2"></i>
-                    <p class="text-sm">Video Player Placeholder</p>
-                    <p id="trailer-src" class="text-xs px-4 text-center break-all"></p>
-                </div>
+                <!-- CÓDIGO NUEVO: El iframe es el reproductor real de YouTube -->
+                <iframe id="trailer-iframe" class="w-full h-full absolute top-0 left-0" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
             </div>
         </div>
     </div>
@@ -1399,9 +1398,9 @@
             <div>
                 <h4 class="text-white font-bold mb-4">Síguenos</h4>
                 <div class="flex gap-4">
-                    <a href="#" class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center text-white hover:bg-brand-red transition-all"><i class="fa-brands fa-facebook-f"></i></a>
-                    <a href="#" class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center text-white hover:bg-brand-red transition-all"><i class="fa-brands fa-instagram"></i></a>
-                    <a href="#" class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center text-white hover:bg-brand-red transition-all"><i class="fa-brands fa-tiktok"></i></a>
+                    <a href="https://www.facebook.com/CineramaChimbote/?locale=es_LA" target="_blank" class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center text-white hover:bg-brand-red transition-all"><i class="fa-brands fa-facebook-f"></i></a>
+                    <a href="https://www.instagram.com/megaplazaoficial/?hl=es" target="_blank" class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center text-white hover:bg-brand-red transition-all"><i class="fa-brands fa-instagram"></i></a>
+                    <a href="https://www.tiktok.com/@megaplazaoficial?lang=es" target="_blank" class="w-10 h-10 rounded-full bg-dark-800 flex items-center justify-center text-white hover:bg-brand-red transition-all"><i class="fa-brands fa-tiktok"></i></a>
                 </div>
             </div>
         </div>
