@@ -42,6 +42,12 @@ const LS_SALAS_MANTENIMIENTO = 'cinerama_salas_mantenimiento';
 const NUMERO_TOTAL_SALAS = 8;
 const LS_VENTAS_ASIENTOS = 'cinerama_ventas_asientos'; // FASE 10: registro persistente de butacas vendidas por sala
 
+// --- MÓDULO 6: BANNER DINÁMICO Y CATEGORÍAS DINÁMICAS DE DULCERÍA ---
+const LS_BANNER = 'cinerama_banner';                         // array de IDs de película, en el orden del carrusel
+const LS_CATEGORIAS_DULCERIA = 'cinerama_categorias_dulceria'; // array de { id, nombre }
+const CATEGORIA_SIN_ASIGNAR = 'sin-categoria';                // categoría especial, siempre existe, no se puede eliminar
+const MAX_ASIENTOS_POR_COMPRA = 8;                            // Módulo 6: límite de asientos por transacción
+
 /** FASE 10: layout único de butacas, compartido entre el mapa del cliente y el de mantenimiento admin
  *  para que ambos representen exactamente la misma sala (mismas filas, columnas y pasillos). */
 const LAYOUT_SALA = {
@@ -54,21 +60,19 @@ let salaMantenimientoActual = 1; // Sala seleccionada en el panel admin (Salas >
 let filtroAdminDulceriaActual = 'all';
 
 let vistaActualVisible = 'vista-inicio';
-let asientoPendienteId = null;
-let panelAbierto = false;
 let menuMovilAbierto = false;
+
+// --- MÓDULO 2: TEMPORIZADOR DE COMPRA ---
+const DURACION_TEMPORIZADOR_COMPRA_SEGUNDOS = 5 * 60; // 5 minutos desde que se entra a asientos
+const DURACION_GRACIA_PERMANENCIA_SEGUNDOS = 30;       // gracia del modal "¿Sigues ahí?"
+let segundosRestantesCompra = 0;
+let idIntervaloTemporizadorCompra = null;
 
 /* ============================================================================
    2. BASE DE DATOS MOCK
    ============================================================================ */
 
 const PRECIOS = {
-    entradas: {
-        'adulto': { label: 'Adulto', precio: 22.0 },
-        'nino': { label: 'Niño', precio: 18.0 },
-        'mayor': { label: 'Adulto Mayor', precio: 18.0 },
-        'preferencial': { label: 'Preferencial', precio: 18.0 }
-    },
     dulces: {
         // Combos
         'c_mega': { nombre: 'Combo Mega Familiar', desc: '2 Canchas Gigantes + 4 Bebidas Grandes + 1 Nachos', precio: 65.0, icono: 'fa-box-open', categoria: 'combo', stock: true },
@@ -95,13 +99,109 @@ const CUPONES_BASE = {
     'CINERAMA10': { porcentaje: 10, descripcion: 'Bienvenida Cinerama' }
 };
 
+/* ============================================================================
+   MÓDULO 2 — JERARQUÍA DE TARIFAS DINÁMICAS
+   ------------------------------------------------------------------------
+   Reemplaza el precio fijo por tipo de entrada (Adulto/Niño/Mayor/Preferencial):
+   ahora todos los asientos de una función pagan la misma tarifa, determinada
+   por el día en que se ve la película. Orden de evaluación (estricto):
+     1) ¿Película en Pre-Estreno?              -> tarifa feriado/fin de semana
+     2) ¿Fecha marcada como feriado/no laborable (calendario admin)? -> ídem
+     3) Jueves / Viernes / Sábado / Domingo     -> S/18
+     4) Lunes / Miércoles                       -> S/13
+     5) Martes                                  -> S/12
+   ============================================================================ */
+const TARIFA_FERIADO_FIN_DE_SEMANA = 18.0;
+const TARIFAS_POR_DIA_SEMANA = {
+    'Lun': 13.0, 'Mié': 13.0,
+    'Mar': 12.0,
+    'Jue': TARIFA_FERIADO_FIN_DE_SEMANA,
+    'Vie': TARIFA_FERIADO_FIN_DE_SEMANA,
+    'Sáb': TARIFA_FERIADO_FIN_DE_SEMANA,
+    'Dom': TARIFA_FERIADO_FIN_DE_SEMANA
+};
+
+// MÓDULO 3 — margen de limpieza obligatorio entre funciones de una misma sala.
+const MARGEN_LIMPIEZA_MINUTOS = 30;
+
+/* ============================================================================
+   MÓDULO 2/4 — CALENDARIO DE FERIADOS Y DÍAS NO LABORABLES
+   ------------------------------------------------------------------------
+   Precargado con los 16 feriados nacionales oficiales del Perú (fuente:
+   calendario laboral 2026). El Módulo 4 agrega la UI para que el admin
+   añada/quite fechas excepcionales; ambos leen/escriben el mismo localStorage.
+   ============================================================================ */
+const LS_FERIADOS = 'cinerama_feriados';
+
+// Feriados de fecha fija (mismo día/mes todos los años)
+const FERIADOS_FIJOS_RECURRENTES = [
+    { mesDia: '01-01', nombre: 'Año Nuevo' },
+    { mesDia: '05-01', nombre: 'Día del Trabajo' },
+    { mesDia: '06-07', nombre: 'Batalla de Arica y Día de la Bandera' },
+    { mesDia: '06-29', nombre: 'San Pedro y San Pablo' },
+    { mesDia: '07-23', nombre: 'Día de la Fuerza Aérea del Perú' },
+    { mesDia: '07-28', nombre: 'Fiestas Patrias' },
+    { mesDia: '07-29', nombre: 'Fiestas Patrias' },
+    { mesDia: '08-06', nombre: 'Batalla de Junín' },
+    { mesDia: '08-30', nombre: 'Santa Rosa de Lima' },
+    { mesDia: '10-08', nombre: 'Combate de Angamos' },
+    { mesDia: '11-01', nombre: 'Todos los Santos' },
+    { mesDia: '12-08', nombre: 'Inmaculada Concepción' },
+    { mesDia: '12-09', nombre: 'Batalla de Ayacucho' },
+    { mesDia: '12-25', nombre: 'Navidad' }
+];
+
+// Feriados de fecha móvil (Semana Santa, depende de la Pascua): se precargan
+// como fechas exactas del año en curso. IMPORTANTE: hay que revisarlos/
+// actualizarlos cada año — el admin también puede editarlos a mano (Módulo 4).
+const FERIADOS_MOVILES_PRECARGADOS = [
+    { fecha: '2026-04-02', nombre: 'Jueves Santo' },
+    { fecha: '2026-04-03', nombre: 'Viernes Santo' }
+];
+
+/** Combina feriados fijos + móviles precargados en fechas ISO exactas del año dado. */
+function generarFeriadosFijosDelAnio(anio) {
+    const deFijos = FERIADOS_FIJOS_RECURRENTES.map(f => ({ fecha: `${anio}-${f.mesDia}`, nombre: f.nombre, tipo: 'feriado' }));
+    const deMoviles = FERIADOS_MOVILES_PRECARGADOS
+        .filter(f => f.fecha.startsWith(`${anio}-`))
+        .map(f => ({ fecha: f.fecha, nombre: f.nombre, tipo: 'feriado' }));
+    return [...deFijos, ...deMoviles];
+}
+
+/**
+ * Lee el calendario de feriados/no-laborables desde localStorage. Si no existe
+ * aún (primera carga), lo inicializa con los feriados precargados del año actual.
+ * Estructura: { [fechaISO]: { nombre, tipo: 'feriado'|'no-laborable' } }
+ */
+function obtenerCalendarioFeriados() {
+    const guardado = JSON.parse(localStorage.getItem(LS_FERIADOS));
+    if (guardado && Object.keys(guardado).length > 0) return guardado;
+
+    const anioActual = new Date().getFullYear();
+    const mapa = {};
+    generarFeriadosFijosDelAnio(anioActual).forEach(f => { mapa[f.fecha] = { nombre: f.nombre, tipo: f.tipo }; });
+    guardarEnLocalStorageSeguro(LS_FERIADOS, mapa);
+    return mapa;
+}
+
+function guardarCalendarioFeriados(mapa) {
+    return guardarEnLocalStorageSeguro(LS_FERIADOS, mapa);
+}
+
+/** ¿La fecha ISO (YYYY-MM-DD) dada está marcada como feriado o día no laborable? */
+function esFechaFeriadoONoLaborable(fechaISO) {
+    if (!fechaISO) return false;
+    const calendario = obtenerCalendarioFeriados();
+    return Boolean(calendario[fechaISO]);
+}
+
 const baseDatosPeliculas = {
     'spiderman': {
         id: 'spiderman',
         titulo: 'Spider-Man: Un Nuevo Día',
         banner: 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=2070',
         poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=600',
-        genero: 'Acción / Aventura', clasificacion: 'APT', duracion: '2h 25m',
+        genero: 'Acción / Aventura', clasificacion: 'APT', duracion: '2h 25m', tipoLanzamiento: 'Estreno',
         sinopsis: 'Peter Parker se enfrenta a su mayor desafío cuando las barreras entre multiversos colisionan inesperadamente. Viejos enemigos de realidades alternativas llegan a Nueva York, y Peter deberá aliarse con versiones de sí mismo para restaurar el equilibrio antes de que su mundo sea destruido por completo.',
         trailer: 'https://www.youtube.com/embed/t06RUxPbp_c?si=Rj4D-H8eK0oD932R',
         horarios: {
@@ -124,7 +224,7 @@ const baseDatosPeliculas = {
         titulo: 'La Noche del Demonio',
         banner: 'https://images.unsplash.com/photo-1505635552518-3448ff116af3?q=80&w=2070',
         poster: 'https://images.unsplash.com/photo-1605806616949-1e87b487cb2a?q=80&w=600',
-        genero: 'Terror / Suspenso', clasificacion: '+14', duracion: '1h 46m',
+        genero: 'Terror / Suspenso', clasificacion: '+14', duracion: '1h 46m', tipoLanzamiento: 'Pre-Estreno',
         sinopsis: 'Una familia se muda a una nueva casa buscando un nuevo comienzo, solo para descubrir que el lugar está plagado de entidades oscuras. A medida que las manifestaciones empeoran, descubren que el verdadero mal no reside en la casa, sino que ha poseído a su hijo menor.',
         trailer: 'https://www.youtube.com/embed/zuZnRUxPbp_c',
         horarios: {
@@ -143,7 +243,7 @@ const baseDatosPeliculas = {
         titulo: 'La Odisea Espacial',
         banner: 'https://images.unsplash.com/photo-1478720568477-152d9b164e26?q=80&w=2070',
         poster: 'https://images.unsplash.com/photo-1542204165-65bf26472b9b?q=80&w=600&auto=format&fit=crop',
-        genero: 'Ciencia Ficción', clasificacion: 'APT', duracion: '2h 52m',
+        genero: 'Ciencia Ficción', clasificacion: 'APT', duracion: '2h 52m', tipoLanzamiento: 'Regular',
         sinopsis: 'Un grupo de astronautas se embarca en una misión secreta hacia Júpiter acompañados por HAL 9000, una inteligencia artificial que controla la nave. A mitad de camino, la máquina comienza a exhibir un comportamiento extraño y letal.',
         trailer: 'https://www.youtube.com/embed/xhRUxPbp_c',
         horarios: {
@@ -175,6 +275,13 @@ const baseDatosEstrenos = {
 };
 
 const formatearMoneda = (monto) => `S/ ${monto.toFixed(2)}`;
+
+// MÓDULO 3 — catálogo de géneros para el selector de chips (multi-selección) de Cartelera.
+const GENEROS_DISPONIBLES = [
+    'Acción', 'Aventura', 'Comedia', 'Drama', 'Terror', 'Suspenso',
+    'Ciencia Ficción', 'Fantasía', 'Animación', 'Romance', 'Documental',
+    'Musical', 'Familiar', 'Crimen'
+];
 
 
 
@@ -220,4 +327,77 @@ function inicializarPersistenciaDulceria() {
 
 function guardarDulceriaEnStorage() {
     guardarEnLocalStorageSeguro(LS_DULCES, PRECIOS.dulces);
+}
+
+/* ============================================================================
+   MÓDULO 6 — PERSISTENCIA DEL BANNER DINÁMICO
+   ------------------------------------------------------------------------
+   El banner guarda solo IDs de película (de baseDatosPeliculas o
+   baseDatosEstrenos); el resto de datos (título, imagen, clasificación...)
+   siempre se lee en vivo desde el catálogo, así que si el admin edita la
+   película el banner se actualiza solo, sin duplicar información.
+   ============================================================================ */
+let bannerPeliculasIds = [];
+
+function inicializarPersistenciaBanner() {
+    const guardado = JSON.parse(localStorage.getItem(LS_BANNER));
+    bannerPeliculasIds = Array.isArray(guardado) ? guardado : [];
+}
+
+function guardarBannerEnStorage() {
+    guardarEnLocalStorageSeguro(LS_BANNER, bannerPeliculasIds);
+}
+
+/** Busca una película destacada del banner en cartelera o estrenos (o null si ya no existe). */
+function resolverPeliculaBanner(id) {
+    return baseDatosPeliculas[id] || baseDatosEstrenos[id] || null;
+}
+
+/** Quita de la lista del banner cualquier ID que ya no exista en el catálogo (ej. tras eliminar una película). */
+function limpiarBannerDeIdsInexistentes() {
+    const antes = bannerPeliculasIds.length;
+    bannerPeliculasIds = bannerPeliculasIds.filter(id => resolverPeliculaBanner(id));
+    if (bannerPeliculasIds.length !== antes) guardarBannerEnStorage();
+}
+
+/* ============================================================================
+   MÓDULO 6 — PERSISTENCIA DE CATEGORÍAS DINÁMICAS DE DULCERÍA
+   ------------------------------------------------------------------------
+   Se siembra con las 4 categorías que ya traía la app (combo/cancha/bebida/
+   snack) para no romper los productos existentes. "Sin categoría" es una
+   categoría especial que siempre existe (no se guarda en la lista editable
+   ni se puede eliminar) y sirve de destino cuando se borra una categoría
+   que aún tenía productos asignados.
+   ============================================================================ */
+const CATEGORIAS_DULCERIA_POR_DEFECTO = [
+    { id: 'combo', nombre: 'Combos Populares' },
+    { id: 'cancha', nombre: 'Cancha (Popcorn)' },
+    { id: 'bebida', nombre: 'Bebidas' },
+    { id: 'snack', nombre: 'Snacks & Dulces' }
+];
+
+let categoriasDulceria = [];
+
+function inicializarPersistenciaCategoriasDulceria() {
+    const guardadas = JSON.parse(localStorage.getItem(LS_CATEGORIAS_DULCERIA));
+    if (Array.isArray(guardadas) && guardadas.length > 0) {
+        categoriasDulceria = guardadas;
+    } else {
+        categoriasDulceria = CATEGORIAS_DULCERIA_POR_DEFECTO.map(c => ({ ...c }));
+        guardarCategoriasDulceriaEnStorage();
+    }
+}
+
+function guardarCategoriasDulceriaEnStorage() {
+    guardarEnLocalStorageSeguro(LS_CATEGORIAS_DULCERIA, categoriasDulceria);
+}
+
+/** Todas las categorías visibles para elegir/filtrar: las editables + "Sin categoría" al final. */
+function obtenerCategoriasDulceriaConSinAsignar() {
+    return [...categoriasDulceria, { id: CATEGORIA_SIN_ASIGNAR, nombre: 'Sin categoría' }];
+}
+
+/** Cuántos productos de PRECIOS.dulces usan una categoría dada. */
+function contarProductosPorCategoria(categoriaId) {
+    return Object.values(PRECIOS.dulces).filter(p => p.categoria === categoriaId).length;
 }

@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // FASE 7: carga catálogo persistente (o inicializa con datos mock la primera vez)
     inicializarPersistenciaCartelera();
     inicializarPersistenciaDulceria();
+    inicializarPersistenciaBanner();               // Módulo 6: banner dinámico
+    inicializarPersistenciaCategoriasDulceria();    // Módulo 6: categorías dinámicas
+    limpiarBannerDeIdsInexistentes();
 
     renderizarGridsInicio();
     asegurarAdminDemo();

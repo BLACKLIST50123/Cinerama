@@ -212,6 +212,128 @@ function obtenerButacasVendidasPorSala(sala) {
     return vendidas;
 }
 
+/** Convierte una duración con formato "2h 25m" (o variantes con espacios) en minutos totales. */
+function duracionAMinutos(duracionStr) {
+    if (!duracionStr) return 0;
+    const match = String(duracionStr).match(/(\d+)\s*h(?:\s*(\d+)\s*m)?/i);
+    if (!match) return 0;
+    const horas = parseInt(match[1], 10) || 0;
+    const minutos = parseInt(match[2], 10) || 0;
+    return horas * 60 + minutos;
+}
+
+/** Convierte "HH:MM" en minutos desde medianoche. Devuelve null si el formato no es válido. */
+function horaAMinutos(horaStr) {
+    if (!horaStr) return null;
+    const partes = String(horaStr).split(':');
+    const h = parseInt(partes[0], 10);
+    const m = parseInt(partes[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+}
+
+/* ============================================================================
+   MÓDULO 5 — RESTRICCIONES DE TECLADO (helpers globales, reutilizables en toda la app)
+   ============================================================================ */
+
+/** Restringe un input a solo dígitos, con un máximo opcional de caracteres (ej. DNI=8, RUC=11, CVV=4). */
+function restringirSoloNumeros(inputEl, maxDigitos = null) {
+    let limpio = inputEl.value.replace(/\D/g, '');
+    if (maxDigitos) limpio = limpio.slice(0, maxDigitos);
+    inputEl.value = limpio;
+}
+
+/** Formatea en vivo un número de tarjeta: solo dígitos, agrupados de 4 en 4, máximo 16 dígitos. */
+function formatearNumeroTarjetaEnVivo(inputEl) {
+    const digitos = inputEl.value.replace(/\D/g, '').slice(0, 16);
+    inputEl.value = digitos.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+}
+
+/** Formatea en vivo un vencimiento de tarjeta al formato estricto MM/AA. */
+function formatearVencimientoTarjetaEnVivo(inputEl) {
+    const digitos = inputEl.value.replace(/\D/g, '').slice(0, 4);
+    inputEl.value = digitos.length > 2 ? `${digitos.slice(0, 2)}/${digitos.slice(2)}` : digitos;
+}
+
+/* ============================================================================
+   MÓDULO 3 — SELECTORES DE CHIPS (Género multi-selección / Formato único)
+   ============================================================================ */
+
+/**
+ * Pinta un selector de chips de MÚLTIPLE selección dentro de contenedorId,
+ * sincronizado con un <input type="hidden"> cuyo valor queda como las
+ * opciones activas unidas por " / " (ej. "Acción / Aventura").
+ * @param {string} seleccionInicial - valor ya guardado (ej. "Acción / Aventura"), puede venir vacío.
+ */
+function renderizarSelectorChipsMultiple(contenedorId, inputOcultoId, opciones, seleccionInicial = '') {
+    const contenedor = document.getElementById(contenedorId);
+    const inputOculto = document.getElementById(inputOcultoId);
+    if (!contenedor || !inputOculto) return;
+
+    const seleccionadas = new Set(
+        String(seleccionInicial).split('/').map(s => s.trim()).filter(Boolean)
+    );
+
+    function repintar() {
+        contenedor.innerHTML = opciones.map(op => {
+            const activo = seleccionadas.has(op);
+            return `<button type="button" data-valor="${op}" class="chip-selector ${activo ? 'chip-selector-activo' : ''}">${op}</button>`;
+        }).join('');
+        inputOculto.value = opciones.filter(op => seleccionadas.has(op)).join(' / ');
+    }
+
+    contenedor.onclick = (ev) => {
+        const btn = ev.target.closest('.chip-selector');
+        if (!btn) return;
+        const valor = btn.dataset.valor;
+        if (seleccionadas.has(valor)) seleccionadas.delete(valor); else seleccionadas.add(valor);
+        repintar();
+    };
+
+    repintar();
+}
+
+/**
+ * Pinta un grupo de chips de selección ÚNICA (comportamiento tipo radio).
+ * Llama a onCambio(valorSeleccionado) cada vez que cambia, incluyendo al pintarse.
+ */
+function renderizarGrupoChipsUnico(contenedorId, opciones, valorInicial, onCambio) {
+    const contenedor = document.getElementById(contenedorId);
+    if (!contenedor) return;
+    let seleccionado = opciones.includes(valorInicial) ? valorInicial : opciones[0];
+
+    function repintar() {
+        contenedor.innerHTML = opciones.map(op =>
+            `<button type="button" data-valor="${op}" class="chip-selector ${op === seleccionado ? 'chip-selector-activo' : ''}">${op}</button>`
+        ).join('');
+    }
+
+    contenedor.onclick = (ev) => {
+        const btn = ev.target.closest('.chip-selector');
+        if (!btn) return;
+        seleccionado = btn.dataset.valor;
+        repintar();
+        onCambio(seleccionado);
+    };
+
+    repintar();
+    onCambio(seleccionado);
+}
+
+/**
+ * Formatea en vivo un campo de duración a partir de solo dígitos ingresados:
+ * "225" -> "2h 25m", "0225" -> "02h 25m". Restringe a números y máximo 4 dígitos (HHMM).
+ */
+function formatearDuracionEnVivo(inputEl) {
+    const digitos = inputEl.value.replace(/\D/g, '').slice(0, 4);
+    const horas = digitos.length > 2 ? digitos.slice(0, digitos.length - 2) : digitos;
+    const minutos = digitos.length > 2 ? digitos.slice(-2) : '';
+    let resultado = '';
+    if (horas) resultado += `${horas}h`;
+    if (minutos) resultado += ` ${minutos}m`;
+    inputEl.value = resultado;
+}
+
 /* ============================================================================
    FASE 16 — ESTADOS VACÍOS (empty states) consistentes en toda la app
    ============================================================================ */

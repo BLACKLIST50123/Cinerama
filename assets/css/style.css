@@ -145,7 +145,8 @@ body {
 .butaca-matriz.disponible { background: #16a34a; }
 .butaca-matriz.mantenimiento { background: #4b5563; border-bottom-color: var(--brand-red); }
 .butaca-matriz.accesible, .asiento-cliente-accesible { background: #2563eb; border-bottom-color: #1e3a8a; }
-.butaca-matriz.vendida { background: #1f2937; opacity: .6; cursor: not-allowed; }
+/* MÓDULO 4: las butacas vendidas ya no se bloquean, solo se marcan con un anillo punteado como referencia visual para el admin. */
+.butaca-matriz.vendida-editable { box-shadow: inset 0 0 0 2px rgba(252, 194, 82, 0.7); }
 .butaca-matriz.pasadizo, .asiento-pasadizo { visibility: hidden; pointer-events: none; }
 .asiento-cliente-no-disponible { background: #374151; opacity: .6; }
 
@@ -160,14 +161,6 @@ body {
 @keyframes slideUpFade {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
-}
-
-/* ---------- 8. Panel lateral de información (asientos) ---------- */
-#panel-info-asientos {
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.panel-open {
-    transform: translateX(0) !important;
 }
 
 /* ---------- 9. Video / tráiler ---------- */
@@ -425,3 +418,71 @@ body {
 .contador-bloqueadas {
     font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================================
+   MÓDULO 2 — Temporizador de compra: parpadeo rojo en el último minuto
+   ============================================================================ */
+.badge-temporizador-urgente {
+    border-color: rgba(229, 9, 20, 0.6) !important;
+    color: #ff6b6b;
+    animation: cinerama-pulso-urgente 1s ease-in-out infinite;
+}
+.badge-temporizador-urgente i {
+    color: #ff6b6b !important;
+}
+@keyframes cinerama-pulso-urgente {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(229, 9, 20, 0.5); }
+    50% { box-shadow: 0 0 0 6px rgba(229, 9, 20, 0); }
+}
+
+/* ============================================================================
+   MÓDULO 3 — Selectores de chips (Género multi-selección, Formato único)
+   ============================================================================ */
+.chip-selector {
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: #1a1a1a;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #9ca3af;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.chip-selector:hover { border-color: rgba(255,255,255,0.3); color: #fff; }
+.chip-selector-activo {
+    background: var(--brand-red);
+    border-color: var(--brand-red);
+    color: #fff;
+}
+.chip-selector-activo:hover { border-color: var(--brand-red); }
+
+/* ============================================================================
+   MÓDULO 4 — Botón "Guardar Cambios" de Salas: resalta si hay cambios pendientes
+   ============================================================================ */
+.boton-cambios-pendientes {
+    animation: cinerama-pulso-guardar 1.4s ease-in-out infinite;
+}
+@keyframes cinerama-pulso-guardar {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 32, 38, 0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(220, 32, 38, 0); }
+}
+
+/* ============================================================================
+   MÓDULO 4 — Calendario de Feriados (panel admin)
+   ============================================================================ */
+.admin-dia-calendario {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    background: #1a1a1a;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #d1d5db;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.admin-dia-calendario:hover { border-color: rgba(255,255,255,0.35); transform: translateY(-1px); }
+.admin-dia-feriado { background: var(--brand-red); border-color: var(--brand-red); color: #fff; }
+.admin-dia-no-laborable { background: var(--brand-yellow); border-color: var(--brand-yellow); color: #000; }

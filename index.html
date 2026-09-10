@@ -32,23 +32,23 @@
          NAVBAR
          ============================================================ -->
     <header id="barra-navegacion" class="fixed top-0 left-0 right-0 w-full z-50 transition-all duration-300 bg-gradient-to-b from-black/80 to-transparent py-4 px-6 md:px-12 flex justify-between items-center">
-        <a href="#" class="flex items-center gap-2 group" onclick="cambiarVista(vistaActualVisible, 'vista-inicio'); return false;">
+        <a href="#" class="flex items-center gap-2 group" onclick="intentarSalirDelFlujoDeCompra(() => cambiarVista(vistaActualVisible, 'vista-inicio')); return false;">
             <div class="relative w-10 h-10 flex items-center justify-center bg-brand-red rounded-lg transform group-hover:rotate-12 transition-transform">
                 <i class="fa-solid fa-film text-white text-xl"></i>
             </div>
             <span class="text-2xl font-bold tracking-tighter text-white">CINE<span class="text-brand-red">RAMA</span></span>
         </a>
         <nav class="hidden md:flex items-center gap-8 font-semibold text-sm">
-            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="cambiarVista(vistaActualVisible, 'vista-inicio'); return false;">Inicio</a>
-            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="abrirVistaPromociones(); return false;">Promociones</a>
+            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="intentarSalirDelFlujoDeCompra(() => cambiarVista(vistaActualVisible, 'vista-inicio')); return false;">Inicio</a>
+            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="intentarSalirDelFlujoDeCompra(() => abrirVistaPromociones()); return false;">Promociones</a>
             <!-- FASE 3: Dulcería directa -->
-            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="abrirDulceriaDirecta(); return false;">Dulcería</a>
+            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="intentarSalirDelFlujoDeCompra(() => abrirDulceriaDirecta()); return false;">Dulcería</a>
             <!-- FASE 2: Socio Cinerama -->
-            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="cambiarVista(vistaActualVisible, 'vista-beneficios'); return false;">Socio Cinerama</a>
+            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="intentarSalirDelFlujoDeCompra(() => cambiarVista(vistaActualVisible, 'vista-beneficios')); return false;">Socio Cinerama</a>
             <!-- FASE 4: Ubicación -->
-            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="abrirVistaUbicacion(); return false;">Ubicación</a>
+            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="intentarSalirDelFlujoDeCompra(() => abrirVistaUbicacion()); return false;">Ubicación</a>
             <!-- FASE 4: Contacto -->
-            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="abrirModalContacto(); return false;">Contáctenos</a>
+            <a href="#" class="text-white hover:text-brand-yellow transition-colors" onclick="intentarSalirDelFlujoDeCompra(() => irAVistaContacto()); return false;">Contáctenos</a>
             <!-- FASE 5: Link solo visible para administradores -->
             <a href="#" id="link-nav-admin" class="hidden text-brand-yellow hover:text-white transition-colors" onclick="abrirPanelAdministrador(); return false;"><i class="fa-solid fa-user-shield mr-1"></i>Admin</a>
         </nav>
@@ -80,6 +80,25 @@
     </header>
 
     <!-- ============================================================
+         LIBRO DE RECLAMACIONES — ícono flotante fijo (obligatorio)
+         ============================================================ -->
+    <button onclick="abrirModalLegal('reclamaciones')" title="Libro de Reclamaciones" aria-label="Libro de Reclamaciones"
+        class="fixed left-0 top-1/2 -translate-y-1/2 z-40 bg-[#193582] hover:bg-[#0f2461] text-white py-3 px-2.5 rounded-r-xl shadow-2xl flex flex-col items-center gap-1.5 transition-colors">
+        <i class="fa-solid fa-book text-lg"></i>
+        <span class="text-[9px] font-bold leading-tight [writing-mode:vertical-rl] rotate-180 tracking-wide">LIBRO DE RECLAMACIONES</span>
+    </button>
+
+    <!-- ============================================================
+         MÓDULO 2 — TEMPORIZADOR DE COMPRA (badge flotante)
+         Nota: se posiciona debajo de #stepper-compra (barra de progreso de
+         la compra, w-full) para no quedar tapado por ella durante el flujo.
+         ============================================================ -->
+    <div id="badge-temporizador-compra" class="hidden fixed top-40 right-4 z-[60] bg-dark-800/95 border border-brand-yellow/40 text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2 text-sm font-bold backdrop-blur-sm">
+        <i class="fa-regular fa-clock text-brand-yellow"></i>
+        <span id="badge-temporizador-texto">05:00</span>
+    </div>
+
+    <!-- ============================================================
          MENÚ MÓVIL (Drawer)
          ============================================================ -->
     <div id="overlay-menu-movil" onclick="toggleMenuMovil(false)" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[55] opacity-0 transition-opacity duration-300"></div>
@@ -89,12 +108,12 @@
             <button onclick="toggleMenuMovil(false)" class="text-gray-400 hover:text-white text-xl"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <nav class="flex flex-col p-6 gap-1 font-semibold text-white overflow-y-auto">
-            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); cambiarVista(vistaActualVisible, 'vista-inicio'); return false;"><i class="fa-solid fa-house w-6"></i> Inicio</a>
-            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); abrirVistaPromociones(); return false;"><i class="fa-solid fa-tags w-6"></i> Promociones</a>
-            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); abrirDulceriaDirecta(); return false;"><i class="fa-solid fa-popcorn w-6"></i> Dulcería</a>
-            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); cambiarVista(vistaActualVisible, 'vista-beneficios'); return false;"><i class="fa-solid fa-star w-6"></i> Socio Cinerama</a>
-            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); abrirVistaUbicacion(); return false;"><i class="fa-solid fa-location-dot w-6"></i> Ubicación</a>
-            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); abrirModalContacto(); return false;"><i class="fa-solid fa-envelope w-6"></i> Contáctenos</a>
+            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); intentarSalirDelFlujoDeCompra(() => cambiarVista(vistaActualVisible, 'vista-inicio')); return false;"><i class="fa-solid fa-house w-6"></i> Inicio</a>
+            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); intentarSalirDelFlujoDeCompra(() => abrirVistaPromociones()); return false;"><i class="fa-solid fa-tags w-6"></i> Promociones</a>
+            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); intentarSalirDelFlujoDeCompra(() => abrirDulceriaDirecta()); return false;"><i class="fa-solid fa-popcorn w-6"></i> Dulcería</a>
+            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); intentarSalirDelFlujoDeCompra(() => cambiarVista(vistaActualVisible, 'vista-beneficios')); return false;"><i class="fa-solid fa-star w-6"></i> Socio Cinerama</a>
+            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); intentarSalirDelFlujoDeCompra(() => abrirVistaUbicacion()); return false;"><i class="fa-solid fa-location-dot w-6"></i> Ubicación</a>
+            <a href="#" class="py-3 border-b border-white/5 hover:text-brand-yellow transition-colors" onclick="toggleMenuMovil(false); intentarSalirDelFlujoDeCompra(() => irAVistaContacto()); return false;"><i class="fa-solid fa-envelope w-6"></i> Contáctenos</a>
             <a href="#" id="link-nav-admin-movil" class="hidden py-3 border-b border-white/5 text-brand-yellow hover:text-white transition-colors" onclick="toggleMenuMovil(false); abrirPanelAdministrador(); return false;"><i class="fa-solid fa-user-shield w-6"></i> Admin</a>
         </nav>
         <div class="mt-auto p-6 border-t border-white/10 flex flex-col gap-3">
@@ -110,51 +129,23 @@
     </aside>
 
     <!-- ============================================================
+         CONTENEDOR DE VISTAS — Módulo 1: envuelve todas las vistas
+         cliente/admin para que el footer se posicione estáticamente al
+         final de lo que sea que esté visible (su altura se ajusta por JS
+         en cambiarVista(), ver ajustarAlturaContenedorVistas()).
+         ============================================================ -->
+    <div id="contenedor-vistas" class="relative w-full">
+
+    <!-- ============================================================
          VISTA: INICIO (Home) — cartelera + estrenos
          ============================================================ -->
     <div id="vista-inicio" class="transition-opacity duration-300 w-full min-h-screen">
         <section class="relative h-[70vh] min-h-[500px] md:h-[85vh] w-full bg-dark-900 overflow-hidden">
             <div id="carrusel-principal" class="relative w-full h-full">
-                <!-- Slide 1 -->
-                <div class="carousel-item active">
-                    <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=2070&auto=format&fit=crop');"></div>
-                    <div class="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent"></div>
-                    <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent"></div>
-                    <div class="absolute inset-0 flex flex-col justify-center px-6 md:px-20 max-w-4xl z-20">
-                        <span class="px-3 py-1 bg-brand-red text-white text-xs font-bold rounded-full w-max mb-4 uppercase tracking-wider">Estreno</span>
-                        <h1 class="text-5xl md:text-7xl font-bold text-white mb-4 leading-tight">Spider-Man:<br>Un Nuevo Día</h1>
-                        <p class="text-gray-300 text-lg md:text-xl mb-6 max-w-2xl line-clamp-3">Peter Parker se enfrenta a su mayor desafío cuando multiversos colisionan, trayendo enemigos de realidades alternativas a Nueva York.</p>
-                        <div class="flex flex-wrap gap-4 items-center">
-                            <button onclick="abrirHorarios('spiderman')" class="bg-brand-red hover:bg-brand-dark-red text-white px-8 py-3 rounded-full font-bold text-lg shadow-lg shadow-red-500/40 transition-all flex items-center gap-2">
-                                <i class="fa-solid fa-ticket"></i> Comprar Entradas
-                            </button>
-                            <button onclick="abrirDetallePelicula('spiderman')" class="bg-white/10 hover:bg-white/20 text-white backdrop-blur-md px-8 py-3 rounded-full font-bold text-lg border border-white/20 transition-all flex items-center gap-2">
-                                <i class="fa-solid fa-play"></i> Ver Tráiler
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <!-- Slide 2 -->
-                <div class="carousel-item">
-                    <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1505635552518-3448ff116af3?q=80&w=2070&auto=format&fit=crop');"></div>
-                    <div class="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent"></div>
-                    <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent"></div>
-                    <div class="absolute inset-0 flex flex-col justify-center px-6 md:px-20 max-w-4xl z-20">
-                        <span class="px-3 py-1 bg-brand-yellow text-black text-xs font-bold rounded-full w-max mb-4 uppercase tracking-wider">Preventa Exclusiva</span>
-                        <h1 class="text-5xl md:text-7xl font-bold text-white mb-4 leading-tight">La Noche del Demonio</h1>
-                        <p class="text-gray-300 text-lg md:text-xl mb-6 max-w-2xl line-clamp-3">Asegura tu asiento para el evento de terror más esperado del año. No te quedes fuera de la pesadilla.</p>
-                        <div class="flex flex-wrap gap-4 items-center">
-                            <button onclick="abrirHorarios('demonio')" class="bg-brand-yellow hover:bg-yellow-400 text-black px-8 py-3 rounded-full font-bold text-lg shadow-lg shadow-yellow-500/40 transition-all flex items-center gap-2">
-                                <i class="fa-solid fa-ticket"></i> Comprar Preventa
-                            </button>
-                            <button onclick="abrirDetallePelicula('demonio')" class="bg-white/10 hover:bg-white/20 text-white backdrop-blur-md px-8 py-3 rounded-full font-bold text-lg border border-white/20 transition-all flex items-center gap-2">
-                                <i class="fa-solid fa-play"></i> Ver Tráiler
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <button id="slide-anterior" class="absolute left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 flex items-center justify-center rounded-full bg-black/30 hover:bg-brand-red text-white backdrop-blur-sm border border-white/10 transition-colors"><i class="fa-solid fa-chevron-left"></i></button>
-                <button id="slide-siguiente" class="absolute right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 flex items-center justify-center rounded-full bg-black/30 hover:bg-brand-red text-white backdrop-blur-sm border border-white/10 transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
+                <!-- Módulo 6: slides inyectados dinámicamente vía JS (renderizarBannerPrincipal(), en cliente.js), leyendo las películas que el admin marcó para el banner en Cartelera. -->
+                <div id="carrusel-slides" class="relative w-full h-full"></div>
+                <button id="slide-anterior" onclick="moverCarrusel(-1)" class="absolute left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 flex items-center justify-center rounded-full bg-black/30 hover:bg-brand-red text-white backdrop-blur-sm border border-white/10 transition-colors"><i class="fa-solid fa-chevron-left"></i></button>
+                <button id="slide-siguiente" onclick="moverCarrusel(1)" class="absolute right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 flex items-center justify-center rounded-full bg-black/30 hover:bg-brand-red text-white backdrop-blur-sm border border-white/10 transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
             </div>
         </section>
 
@@ -220,27 +211,28 @@
          VISTA: SELECCIÓN DE ASIENTOS
          ============================================================ -->
     <div id="vista-asientos" class="hidden w-full bg-dark-900 min-h-screen pb-40 opacity-0 transition-opacity duration-300 absolute top-0 left-0 z-30 pt-36 overflow-x-hidden">
-        <!-- Panel de información colapsable -->
-        <div id="panel-info-asientos" class="fixed left-0 top-36 bottom-0 w-72 md:w-80 bg-dark-800 border-r border-white/10 transform -translate-x-full z-40 shadow-2xl flex flex-col">
-            <div class="p-6 overflow-y-auto hide-scrollbar relative h-full">
-                <button onclick="cambiarVista('vista-asientos', 'vista-horarios')" class="text-white/60 hover:text-white mb-6 flex items-center gap-2 transition-colors text-sm">
-                    <i class="fa-solid fa-arrow-left"></i> Cambiar función
-                </button>
-                <div id="info-pelicula-asientos">
-                    <!-- Inyectado vía JS -->
+        <!-- Módulo 6: grid responsivo de 3 columnas visuales (1 / 2 / 1) — en móvil se apila en una sola columna. -->
+        <div class="max-w-[1600px] mx-auto px-4 md:px-8 py-8 grid grid-cols-1 lg:grid-cols-4 gap-8" id="contenedor-principal-asientos">
+
+            <!-- Columna izquierda: información de la función -->
+            <div class="w-full lg:col-span-1">
+                <div class="bg-dark-800 p-6 rounded-2xl border border-white/5 shadow-xl lg:sticky lg:top-28">
+                    <button onclick="cambiarVista('vista-asientos', 'vista-horarios')" class="text-white/60 hover:text-white mb-6 flex items-center gap-2 transition-colors text-sm">
+                        <i class="fa-solid fa-arrow-left"></i> Cambiar función
+                    </button>
+                    <div id="info-pelicula-asientos">
+                        <!-- Inyectado vía JS -->
+                    </div>
                 </div>
             </div>
-            <button onclick="togglePanelInfoAsientos()" class="absolute -right-12 top-1/3 w-12 h-20 bg-dark-800 border-r border-t border-b border-white/10 rounded-r-xl flex flex-col items-center justify-center text-brand-yellow hover:bg-dark-700 transition-colors shadow-[5px_0_15px_rgba(0,0,0,0.5)] group">
-                <i id="icono-toggle-panel" class="fa-solid fa-chevron-right mb-1 transition-transform group-hover:scale-110"></i>
-                <span class="text-[10px] font-bold tracking-widest" style="writing-mode: vertical-rl;">INFO</span>
-            </button>
-        </div>
 
-        <div class="max-w-[1200px] mx-auto px-4 md:px-12 py-8 flex flex-col lg:flex-row gap-10 lg:pl-20 transition-all duration-300" id="contenedor-principal-asientos">
-            <!-- Mapa de asientos -->
-            <div class="w-full lg:w-2/3">
-                <div class="flex justify-between items-center mb-8">
+            <!-- Columna central: mapa de asientos -->
+            <div class="w-full lg:col-span-2">
+                <div class="flex justify-between items-center mb-8 flex-wrap gap-3">
                     <h2 class="text-2xl md:text-3xl font-bold text-white">Elige tus asientos</h2>
+                    <div class="bg-dark-800 border border-brand-yellow/30 text-brand-yellow font-bold px-4 py-2 rounded-full text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-ticket"></i> <span id="texto-tarifa-vigente">S/ 0.00 c/u</span>
+                    </div>
                 </div>
 
                 <div class="bg-dark-800 p-6 md:p-10 rounded-2xl border border-white/5 shadow-2xl flex flex-col items-center overflow-x-auto relative">
@@ -267,9 +259,9 @@
                 </div>
             </div>
 
-            <!-- Resumen del pedido -->
-            <div class="w-full lg:w-1/3">
-                <div class="bg-dark-800 p-6 rounded-2xl border border-white/5 sticky top-28 shadow-xl">
+            <!-- Columna derecha: resumen y pago -->
+            <div class="w-full lg:col-span-1">
+                <div class="bg-dark-800 p-6 rounded-2xl border border-white/5 lg:sticky lg:top-28 shadow-xl">
                     <h3 class="text-xl font-bold text-white border-b border-white/10 pb-4 mb-4">Resumen de Compra</h3>
 
                     <div class="mb-4">
@@ -312,11 +304,7 @@
                 </div>
 
                 <div class="flex gap-2 overflow-x-auto hide-scrollbar mb-8 border-b border-white/10 pb-2" id="categorias-dulceria">
-                    <button onclick="renderizarGridDulceria('all')" class="cat-btn px-4 py-2 text-brand-yellow font-bold border-b-2 border-brand-yellow whitespace-nowrap">Todos</button>
-                    <button onclick="renderizarGridDulceria('combo')" class="cat-btn px-4 py-2 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent">Combos Populares</button>
-                    <button onclick="renderizarGridDulceria('cancha')" class="cat-btn px-4 py-2 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent">Cancha (Popcorn)</button>
-                    <button onclick="renderizarGridDulceria('bebida')" class="cat-btn px-4 py-2 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent">Bebidas</button>
-                    <button onclick="renderizarGridDulceria('snack')" class="cat-btn px-4 py-2 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent">Snacks & Dulces</button>
+                    <!-- Módulo 6: botones inyectados dinámicamente vía JS (renderizarFiltrosCategoriasDulceria(), en cliente.js), según categoriasDulceria -->
                 </div>
 
                 <div id="grid-productos" class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -393,11 +381,15 @@
                         </label>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><input type="text" id="campo-dni" placeholder="Número de DNI" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red transition-colors"></div>
-                        <div><input type="text" id="campo-ruc" placeholder="Número de RUC" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red transition-colors hidden"></div>
+                        <div><input type="text" id="campo-dni" inputmode="numeric" maxlength="8" oninput="restringirSoloNumeros(this, 8)" placeholder="Número de DNI" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red transition-colors"></div>
+                        <div><input type="text" id="campo-ruc" inputmode="numeric" maxlength="11" oninput="restringirSoloNumeros(this, 11)" placeholder="Número de RUC" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red transition-colors hidden"></div>
                         <div class="md:col-span-2"><input type="text" id="campo-nombre" placeholder="Nombres y Apellidos" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red transition-colors"></div>
                         <div class="md:col-span-2"><input type="email" id="campo-correo" placeholder="Correo Electrónico (para tu ticket)" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red transition-colors"></div>
                     </div>
+                    <label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer select-none mt-4">
+                        <input type="checkbox" id="check-privacidad-pago" class="mt-0.5 accent-brand-red w-4 h-4 flex-shrink-0">
+                        <span>Acepto las <a href="#" onclick="abrirModalLegal('privacidad'); return false;" class="text-brand-yellow hover:underline">Políticas de Privacidad</a> (Ley N° 29733).</span>
+                    </label>
                 </div>
 
                 <!-- FASE 5: Motor de descuentos — cupón promocional -->
@@ -425,10 +417,10 @@
                             </div>
                         </label>
                         <div id="formulario-tarjeta" class="p-5 bg-dark-900 flex flex-col gap-4">
-                            <input type="text" id="campo-numero-tarjeta" placeholder="Número de Tarjeta" class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red font-mono">
+                            <input type="text" id="campo-numero-tarjeta" inputmode="numeric" maxlength="19" oninput="formatearNumeroTarjetaEnVivo(this)" placeholder="Número de Tarjeta" class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red font-mono">
                             <div class="flex gap-4">
-                                <input type="text" id="campo-vencimiento-tarjeta" placeholder="MM/AA" class="w-1/2 bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red font-mono">
-                                <input type="text" id="campo-cvv-tarjeta" placeholder="CVV" class="w-1/2 bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red font-mono">
+                                <input type="text" id="campo-vencimiento-tarjeta" inputmode="numeric" maxlength="5" oninput="formatearVencimientoTarjetaEnVivo(this)" placeholder="MM/AA" class="w-1/2 bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red font-mono">
+                                <input type="text" id="campo-cvv-tarjeta" inputmode="numeric" maxlength="4" oninput="restringirSoloNumeros(this, 4)" placeholder="CVV" class="w-1/2 bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red font-mono">
                             </div>
                             <input type="text" id="campo-titular-tarjeta" placeholder="Nombre del Titular" class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-red">
                         </div>
@@ -729,6 +721,7 @@
                     <button id="tab-btn-cartelera" onclick="cambiarTabAdmin('cartelera')" class="admin-tab-btn whitespace-nowrap text-left px-4 py-3 rounded-xl text-gray-300 font-semibold flex items-center gap-3 hover:bg-dark-700 transition-colors"><i class="fa-solid fa-clapperboard w-5"></i> Cartelera</button>
                     <button id="tab-btn-dulceria" onclick="cambiarTabAdmin('dulceria')" class="admin-tab-btn whitespace-nowrap text-left px-4 py-3 rounded-xl text-gray-300 font-semibold flex items-center gap-3 hover:bg-dark-700 transition-colors"><i class="fa-solid fa-popcorn w-5"></i> Dulcería</button>
                     <button id="tab-btn-salas" onclick="cambiarTabAdmin('salas')" class="admin-tab-btn whitespace-nowrap text-left px-4 py-3 rounded-xl text-gray-300 font-semibold flex items-center gap-3 hover:bg-dark-700 transition-colors"><i class="fa-solid fa-chair w-5"></i> Salas (Mantenimiento)</button>
+                    <button id="tab-btn-calendario" onclick="cambiarTabAdmin('calendario')" class="admin-tab-btn whitespace-nowrap text-left px-4 py-3 rounded-xl text-gray-300 font-semibold flex items-center gap-3 hover:bg-dark-700 transition-colors"><i class="fa-solid fa-calendar-days w-5"></i> Calendario (Feriados)</button>
                     <button id="tab-btn-descuentos" onclick="cambiarTabAdmin('descuentos')" class="admin-tab-btn whitespace-nowrap text-left px-4 py-3 rounded-xl text-gray-300 font-semibold flex items-center gap-3 hover:bg-dark-700 transition-colors"><i class="fa-solid fa-tags w-5"></i> Descuentos</button>
                     <button id="tab-btn-dashboard" onclick="cambiarTabAdmin('dashboard')" class="admin-tab-btn whitespace-nowrap text-left px-4 py-3 rounded-xl text-gray-300 font-semibold flex items-center gap-3 hover:bg-dark-700 transition-colors"><i class="fa-solid fa-chart-line w-5"></i> Dashboard</button>
                 </div>
@@ -756,16 +749,26 @@
                                 <div class="bg-dark-900 border border-white/10 rounded-xl p-3 space-y-3">
                                     <p class="text-gray-400 text-xs font-bold uppercase flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-brand-red"></i> Datos básicos</p>
                                     <input type="text" id="admin-pelicula-titulo" placeholder="Título de la película" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
-                                    <input type="text" id="admin-pelicula-genero" placeholder="Género" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
+                                    <div>
+                                        <label class="text-[11px] text-gray-500 mb-1 block">Género (elige uno o más)</label>
+                                        <div id="admin-pelicula-genero-chips" class="flex flex-wrap gap-1.5 bg-dark-800 border border-white/10 rounded-lg p-2"></div>
+                                        <input type="hidden" id="admin-pelicula-genero">
+                                    </div>
                                     <div class="grid grid-cols-2 gap-3">
-                                        <input type="text" id="admin-pelicula-duracion" placeholder="Duración (ej: 2h 10m)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
-                                        <select id="admin-pelicula-clasificacion" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
+                                        <input type="text" id="admin-pelicula-duracion" inputmode="numeric" oninput="formatearDuracionEnVivo(this)" placeholder="Duración (ej: 02h 25m)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
+                                        <select id="admin-pelicula-edad" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
                                             <option value="APT">APT</option>
                                             <option value="APD">APD</option>
-                                            <option value="+18">+18</option>
                                             <option value="+14">+14</option>
-                                            <option value="PRE-ESTRENO">PRE-ESTRENO</option>
-                                            <option value="ESTRENO">ESTRENO</option>
+                                            <option value="+18">+18</option>
+                                        </select>
+                                    </div>
+                                    <div id="admin-pelicula-lanzamiento-contenedor">
+                                        <label class="text-[11px] text-gray-500 mb-1 block">Tipo de lanzamiento</label>
+                                        <select id="admin-pelicula-lanzamiento" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
+                                            <option value="Regular">Regular</option>
+                                            <option value="Estreno">Estreno</option>
+                                            <option value="Pre-Estreno">Pre-Estreno</option>
                                         </select>
                                     </div>
                                     <textarea id="admin-pelicula-sinopsis" rows="3" placeholder="Sinopsis" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red resize-none"></textarea>
@@ -821,6 +824,17 @@
                             <div id="admin-lista-peliculas" class="space-y-2 max-h-[32rem] overflow-y-auto hide-scrollbar"></div>
                         </div>
                     </div>
+
+                    <!-- Módulo 6: Banner Principal dinámico -->
+                    <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl mt-8">
+                        <div class="mb-4">
+                            <h3 class="text-lg font-bold text-white">Banner Principal</h3>
+                            <p class="text-gray-500 text-xs mt-1">Elige qué películas (de Cartelera o Estrenos) se destacan en el carrusel de inicio, y en qué orden aparecen. Usa las flechas para reordenar.</p>
+                        </div>
+                        <div id="admin-lista-banner" class="space-y-2">
+                            <!-- Inyectado vía JS: renderizarAdminBanner() -->
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 15.2 Dulcería -->
@@ -835,16 +849,11 @@
                                 <div class="grid grid-cols-2 gap-3">
                                     <input type="number" min="0" step="0.10" id="admin-dulce-precio" placeholder="Precio S/" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow">
                                     <select id="admin-dulce-categoria" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow">
-                                        <option value="combo">Combo</option>
-                                        <option value="cancha">Cancha</option>
-                                        <option value="bebida">Bebida</option>
-                                        <option value="snack">Snack</option>
+                                        <!-- Módulo 6: opciones inyectadas dinámicamente vía JS (poblarSelectsCategoriaDulceria(), en admin.js) -->
                                     </select>
                                 </div>
-                                <div><input type="text" id="admin-dulce-icono" placeholder="Ícono FontAwesome (ej: fa-popcorn)" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow"></div>
-
                                 <div class="bg-dark-900 border border-white/10 rounded-xl p-3">
-                                    <p class="text-gray-400 text-xs font-bold uppercase mb-2">Imagen (opcional)</p>
+                                    <p class="text-gray-400 text-xs font-bold uppercase mb-2">Imagen del producto</p>
                                     <div class="flex gap-4 mb-2 text-xs text-gray-300">
                                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="admin-dulce-origen-img" value="url" checked class="accent-brand-yellow" onchange="alternarOrigenImagenAdmin('dulce')"> URL</label>
                                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="admin-dulce-origen-img" value="archivo" class="accent-brand-yellow" onchange="alternarOrigenImagenAdmin('dulce')"> Cargar archivo</label>
@@ -852,7 +861,7 @@
                                     <div class="flex gap-3 items-start">
                                         <img id="admin-dulce-preview" class="preview-imagen-admin hidden" alt="Vista previa del producto">
                                         <div class="flex-grow min-w-0">
-                                            <input type="text" id="admin-dulce-imagen-url" oninput="actualizarPreviewImagenAdmin('admin-dulce-preview', this.value)" placeholder="https://... (opcional)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow">
+                                            <input type="text" id="admin-dulce-imagen-url" oninput="actualizarPreviewImagenAdmin('admin-dulce-preview', this.value)" placeholder="https://... (obligatorio)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow">
                                             <input type="file" id="admin-dulce-imagen-archivo" accept="image/*" onchange="actualizarPreviewImagenArchivo('admin-dulce-imagen-archivo', 'admin-dulce-preview')" class="hidden w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-brand-yellow file:text-black file:font-bold file:text-xs">
                                         </div>
                                     </div>
@@ -871,13 +880,26 @@
                                 <input type="text" id="admin-buscar-dulceria" oninput="renderizarAdminDulceria()" placeholder="Buscar producto..." class="w-full bg-dark-900 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-brand-yellow">
                             </div>
                             <div id="admin-filtros-dulceria" class="flex gap-2 overflow-x-auto hide-scrollbar mb-4 border-b border-white/10 pb-2">
-                                <button onclick="filtrarAdminDulceria('all')" class="admin-cat-btn px-3 py-1.5 text-brand-yellow font-bold border-b-2 border-brand-yellow whitespace-nowrap text-sm">Todos</button>
-                                <button onclick="filtrarAdminDulceria('combo')" class="admin-cat-btn px-3 py-1.5 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent text-sm">Combos</button>
-                                <button onclick="filtrarAdminDulceria('cancha')" class="admin-cat-btn px-3 py-1.5 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent text-sm">Cancha</button>
-                                <button onclick="filtrarAdminDulceria('bebida')" class="admin-cat-btn px-3 py-1.5 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent text-sm">Bebidas</button>
-                                <button onclick="filtrarAdminDulceria('snack')" class="admin-cat-btn px-3 py-1.5 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent text-sm">Snacks</button>
+                                <!-- Módulo 6: botones inyectados dinámicamente vía JS (renderizarFiltrosAdminDulceria(), en admin.js), según categoriasDulceria -->
                             </div>
                             <div id="admin-lista-dulceria" class="space-y-2 max-h-[28rem] overflow-y-auto hide-scrollbar"></div>
+                        </div>
+                    </div>
+
+                    <!-- Módulo 6: Gestión de Categorías de Dulcería -->
+                    <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl mt-8">
+                        <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                            <div>
+                                <h3 class="text-lg font-bold text-white">Categorías de Dulcería</h3>
+                                <p class="text-gray-500 text-xs mt-1">Estas categorías alimentan el selector del formulario de productos y los filtros que ven tus clientes.</p>
+                            </div>
+                        </div>
+                        <form onsubmit="crearCategoriaDulceriaAdmin(event)" class="flex flex-col sm:flex-row gap-3 mb-5">
+                            <input type="text" id="admin-nueva-categoria-nombre" placeholder="Nombre de la nueva categoría (ej: Helados)" class="flex-grow bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-brand-yellow">
+                            <button type="submit" class="bg-brand-yellow hover:bg-yellow-400 text-black px-6 py-2.5 rounded-xl font-bold text-sm transition-colors whitespace-nowrap"><i class="fa-solid fa-plus mr-1"></i> Crear Categoría</button>
+                        </form>
+                        <div id="admin-lista-categorias-dulceria" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <!-- Inyectado vía JS -->
                         </div>
                     </div>
                 </div>
@@ -885,7 +907,14 @@
                 <!-- 15.3 Salas (Mantenimiento) -->
                 <div id="tab-panel-salas" class="admin-tab-panel hidden">
                     <h2 class="text-2xl font-bold text-white mb-2">Mantenimiento de Salas</h2>
-                    <p class="text-gray-400 text-sm mb-6">Diseña la estructura de cada sala y luego administra el estado operativo de sus butacas.</p>
+                    <p class="text-gray-400 text-sm mb-4">Diseña la estructura de cada sala y luego administra el estado operativo de sus butacas.</p>
+                    <div class="bg-brand-yellow/10 border border-brand-yellow/30 rounded-xl px-4 py-3 mb-6 flex items-start gap-3 max-w-xl">
+                        <i class="fa-solid fa-triangle-exclamation text-brand-yellow mt-0.5"></i>
+                        <p class="text-brand-yellow text-xs leading-relaxed">
+                            Puedes editar la distribución y el estado de <b>cualquier butaca, incluidas las ya vendidas</b> (se marcan solo como referencia, no bloquean la edición).
+                            <b>Nada se guarda hasta que presiones "Guardar Cambios"</b> — si cambias de sala o sales sin guardar, tus cambios en esta sala se pierden.
+                        </p>
+                    </div>
                     <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 md:p-10 shadow-xl flex flex-col items-center">
                         <div class="w-full max-w-xs mb-4">
                             <label class="block text-gray-400 text-xs font-bold uppercase mb-2 text-center">Sala seleccionada</label>
@@ -928,6 +957,36 @@
                                 <div class="w-5 h-5 bg-blue-600 rounded-t-lg rounded-b-sm border-b-2 border-blue-800"></div> <span class="text-gray-400">Accesible</span>
                             </div>
                         </div>
+                        <div class="w-full max-w-xl mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row gap-3">
+                            <button id="btn-restablecer-cambios-sala" type="button" onclick="restablecerCambiosSala()" class="w-full sm:w-auto bg-dark-900 hover:bg-dark-700 border border-white/10 text-gray-300 hover:text-white py-3 px-6 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-rotate-left"></i> Restablecer
+                            </button>
+                            <button id="btn-guardar-cambios-sala" type="button" onclick="guardarCambiosSala()" class="w-full flex-grow bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-floppy-disk"></i> Guardar Cambios
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 15.5 Calendario de Feriados -->
+                <div id="tab-panel-calendario" class="admin-tab-panel hidden">
+                    <h2 class="text-2xl font-bold text-white mb-2">Calendario de Feriados y Días No Laborables</h2>
+                    <p class="text-gray-400 text-sm mb-6">Los feriados nacionales del Perú ya vienen precargados. Haz clic en cualquier día para agregar o quitar una marca — esto afecta directamente la tarifa que se cobra ese día en el motor de ventas.</p>
+                    <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl max-w-2xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <button type="button" onclick="cambiarMesCalendarioAdmin(-1)" class="w-9 h-9 rounded-lg bg-dark-900 hover:bg-dark-700 border border-white/10 text-white flex items-center justify-center transition-colors"><i class="fa-solid fa-chevron-left"></i></button>
+                            <p id="admin-calendario-mes-titulo" class="text-white font-bold text-lg"></p>
+                            <button type="button" onclick="cambiarMesCalendarioAdmin(1)" class="w-9 h-9 rounded-lg bg-dark-900 hover:bg-dark-700 border border-white/10 text-white flex items-center justify-center transition-colors"><i class="fa-solid fa-chevron-right"></i></button>
+                        </div>
+                        <div class="grid grid-cols-7 gap-1.5 text-center text-[11px] text-gray-500 font-bold uppercase mb-2">
+                            <span>Dom</span><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span>
+                        </div>
+                        <div id="admin-calendario-grid" class="grid grid-cols-7 gap-1.5"></div>
+                        <div class="mt-6 flex flex-wrap gap-4 text-xs">
+                            <div class="flex items-center gap-2"><div class="w-4 h-4 rounded bg-brand-red"></div><span class="text-gray-400">Feriado</span></div>
+                            <div class="flex items-center gap-2"><div class="w-4 h-4 rounded bg-brand-yellow"></div><span class="text-gray-400">Día no laborable</span></div>
+                            <div class="flex items-center gap-2"><div class="w-4 h-4 rounded border border-white/20"></div><span class="text-gray-400">Normal</span></div>
+                        </div>
                     </div>
                 </div>
 
@@ -943,14 +1002,6 @@
                                 <div><input type="text" id="admin-cupon-desc" placeholder="Descripción (opcional)" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow"></div>
                                 <button type="submit" class="w-full bg-brand-yellow hover:bg-yellow-400 text-black py-3 rounded-xl font-bold transition-colors">Crear Cupón</button>
                             </form>
-
-                            <div class="mt-6 pt-6 border-t border-white/10 flex items-center justify-between">
-                                <div>
-                                    <p class="text-white font-bold text-sm">Promoción "Martes 2x1"</p>
-                                    <p class="text-gray-500 text-xs">Activa la promoción global en todas las sedes.</p>
-                                </div>
-                                <input type="checkbox" id="admin-toggle-martes2x1" class="toggle-stock" onchange="toggleMartes2x1(this.checked)">
-                            </div>
                         </div>
                         <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl">
                             <h3 class="text-lg font-bold text-white mb-4">Cupones Activos</h3>
@@ -992,7 +1043,7 @@
     <!-- ============================================================
          FASE 7: MODAL DE EDICIÓN DE PELÍCULA (Panel Admin)
          ============================================================ -->
-    <div id="modal-editar-pelicula" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-editar-pelicula" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto hide-scrollbar" id="editar-pelicula-contenido">
             <button onclick="cerrarModalEditarPelicula()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6">Editar Película</h3>
@@ -1000,15 +1051,28 @@
                 <input type="hidden" id="edit-pelicula-id">
                 <input type="hidden" id="edit-pelicula-origen">
                 <div><input type="text" id="edit-pelicula-titulo" placeholder="Título" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red"></div>
-                <div class="grid grid-cols-2 gap-3">
-                    <input type="text" id="edit-pelicula-genero" placeholder="Género" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
-                    <input type="text" id="edit-pelicula-duracion" placeholder="Duración" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
+                <div>
+                    <label class="text-[11px] text-gray-500 mb-1 block">Género (elige uno o más)</label>
+                    <div id="edit-pelicula-genero-chips" class="flex flex-wrap gap-1.5 bg-dark-900 border border-white/10 rounded-xl p-2"></div>
+                    <input type="hidden" id="edit-pelicula-genero">
                 </div>
-                <select id="edit-pelicula-clasificacion" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
-                    <option value="APT">APT</option>
-                    <option value="+14">+14</option>
-                    <option value="+18">+18</option>
-                </select>
+                <div class="grid grid-cols-2 gap-3">
+                    <input type="text" id="edit-pelicula-duracion" inputmode="numeric" oninput="formatearDuracionEnVivo(this)" placeholder="Duración (ej: 02h 25m)" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
+                    <select id="edit-pelicula-edad" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
+                        <option value="APT">APT</option>
+                        <option value="APD">APD</option>
+                        <option value="+14">+14</option>
+                        <option value="+18">+18</option>
+                    </select>
+                </div>
+                <div id="edit-pelicula-lanzamiento-contenedor">
+                    <label class="text-[11px] text-gray-500 mb-1 block">Tipo de lanzamiento</label>
+                    <select id="edit-pelicula-lanzamiento" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
+                        <option value="Regular">Regular</option>
+                        <option value="Estreno">Estreno</option>
+                        <option value="Pre-Estreno">Pre-Estreno</option>
+                    </select>
+                </div>
                 <textarea id="edit-pelicula-sinopsis" rows="3" placeholder="Sinopsis" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red resize-none"></textarea>
                 <input type="text" id="edit-pelicula-trailer" placeholder="URL del tráiler" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
 
@@ -1028,7 +1092,7 @@
                 </div>
 
                 <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-                    <input type="checkbox" id="edit-pelicula-es-estreno" class="accent-brand-yellow w-4 h-4">
+                    <input type="checkbox" id="edit-pelicula-es-estreno" class="accent-brand-yellow w-4 h-4" onchange="actualizarLanzamientoVisibleEdicion()">
                     Es "Próximo Estreno" (no aparece en Cartelera con horarios)
                 </label>
 
@@ -1043,9 +1107,38 @@
     </div>
 
     <!-- ============================================================
+         MÓDULO 4: MODAL DE EDICIÓN DE DÍA (Calendario de Feriados)
+         ============================================================ -->
+    <div id="modal-editar-feriado" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+        <div class="bg-dark-800 p-6 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full transform scale-95 transition-transform duration-200" id="editar-feriado-contenido">
+            <h3 class="text-xl font-bold text-white mb-1">Editar día</h3>
+            <p id="feriado-fecha-legible" class="text-gray-400 text-sm mb-4"></p>
+            <input type="hidden" id="feriado-fecha-iso">
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-gray-400 text-xs mb-1">Marca</label>
+                    <select id="feriado-tipo" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
+                        <option value="">Día normal (sin marca)</option>
+                        <option value="feriado">Feriado</option>
+                        <option value="no-laborable">Día no laborable</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-400 text-xs mb-1">Nombre / motivo (opcional)</label>
+                    <input type="text" id="feriado-nombre" placeholder="Ej: Feriado regional" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-red">
+                </div>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button type="button" onclick="cerrarModalEditarFeriado()" class="flex-1 bg-dark-900 hover:bg-dark-700 border border-white/10 text-white py-2.5 rounded-xl font-bold text-sm transition-colors">Cancelar</button>
+                <button type="button" onclick="guardarEdicionFeriado()" class="flex-1 bg-brand-red hover:bg-brand-dark-red text-white py-2.5 rounded-xl font-bold text-sm transition-colors">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          FASE 11: MODAL DE EDICIÓN DE PRODUCTO DE DULCERÍA (Panel Admin)
          ============================================================ -->
-    <div id="modal-editar-dulce" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-editar-dulce" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto hide-scrollbar" id="editar-dulce-contenido">
             <button onclick="cerrarModalEditarDulce()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6">Editar Producto</h3>
@@ -1056,16 +1149,11 @@
                 <div class="grid grid-cols-2 gap-3">
                     <input type="number" min="0" step="0.10" id="edit-dulce-precio" placeholder="Precio S/" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow">
                     <select id="edit-dulce-categoria" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow">
-                        <option value="combo">Combo</option>
-                        <option value="cancha">Cancha</option>
-                        <option value="bebida">Bebida</option>
-                        <option value="snack">Snack</option>
+                        <!-- Módulo 6: opciones inyectadas dinámicamente vía JS (poblarSelectsCategoriaDulceria(), en admin.js) -->
                     </select>
                 </div>
-                <input type="text" id="edit-dulce-icono" placeholder="Ícono FontAwesome (ej: fa-popcorn)" class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-brand-yellow">
-
                 <div class="bg-dark-900 border border-white/10 rounded-xl p-3">
-                    <p class="text-gray-400 text-xs font-bold uppercase mb-2">Imagen (opcional)</p>
+                    <p class="text-gray-400 text-xs font-bold uppercase mb-2">Imagen del producto</p>
                     <div class="flex gap-4 mb-2 text-xs text-gray-300">
                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="edit-dulce-origen-img" value="url" checked class="accent-brand-yellow" onchange="alternarOrigenImagenAdmin('edit-dulce')"> URL</label>
                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="edit-dulce-origen-img" value="archivo" class="accent-brand-yellow" onchange="alternarOrigenImagenAdmin('edit-dulce')"> Cargar archivo</label>
@@ -1073,7 +1161,7 @@
                     <div class="flex gap-3 items-start">
                         <img id="edit-dulce-preview" class="preview-imagen-admin hidden" alt="Vista previa del producto">
                         <div class="flex-grow min-w-0">
-                            <input type="text" id="edit-dulce-imagen-url" oninput="actualizarPreviewImagenAdmin('edit-dulce-preview', this.value)" placeholder="https://... (opcional)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow">
+                            <input type="text" id="edit-dulce-imagen-url" oninput="actualizarPreviewImagenAdmin('edit-dulce-preview', this.value)" placeholder="https://... (obligatorio)" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow">
                             <input type="file" id="edit-dulce-imagen-archivo" accept="image/*" onchange="actualizarPreviewImagenArchivo('edit-dulce-imagen-archivo', 'edit-dulce-preview')" class="hidden w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-brand-yellow file:text-black file:font-bold file:text-xs">
                         </div>
                     </div>
@@ -1105,7 +1193,11 @@
                     </div>
                     <div>
                         <label class="text-[11px] text-gray-500 mb-1 block">Formato</label>
-                        <input type="text" id="horario-nuevo-formato" list="admin-formatos-comunes" placeholder="Ej: 2D Doblada" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-yellow">
+                        <div class="flex flex-wrap gap-1.5">
+                            <div id="horario-nuevo-formato-dimension" class="flex gap-1.5"></div>
+                            <div id="horario-nuevo-formato-idioma" class="flex gap-1.5"></div>
+                        </div>
+                        <input type="hidden" id="horario-nuevo-formato" value="2D / Doblada">
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3 mb-3">
@@ -1131,25 +1223,6 @@
             <div class="flex gap-3">
                 <button type="button" onclick="cerrarModalHorarios()" class="flex-1 bg-dark-700 hover:bg-dark-600 text-white py-3 rounded-xl font-bold text-sm transition-colors">Cancelar</button>
                 <button type="button" onclick="guardarHorariosPelicula()" class="flex-1 bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold text-sm transition-colors">Guardar Horarios</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============================================================
-         MODAL: TIPO DE ENTRADA (selección de butaca)
-         ============================================================ -->
-    <div id="modal-tipo-entrada" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
-        <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200" id="modal-tipo-entrada-contenido">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                    <div class="w-4 h-4 bg-green-500 rounded-sm"></div> Asiento <span id="modal-asiento-id" class="text-brand-yellow"></span>
-                </h3>
-                <button onclick="cerrarModalTipoEntrada()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
-            </div>
-            <p class="text-gray-400 text-sm mb-4">Elige el tipo de entrada para este asiento:</p>
-
-            <div class="space-y-3" id="contenedor-tipos-entrada">
-                <!-- Inyectado vía JS -->
             </div>
         </div>
     </div>
@@ -1191,7 +1264,7 @@
     <!-- ============================================================
          MODAL: LOGIN
          ============================================================ -->
-    <div id="modal-login" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
+    <div id="modal-login" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 relative transform scale-95 transition-transform duration-200" id="login-contenido">
             <button onclick="cerrarModalesAuth()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6 text-center">Iniciar Sesión</h3>
@@ -1214,7 +1287,7 @@
     <!-- ============================================================
          MODAL: REGISTRO
          ============================================================ -->
-    <div id="modal-registro" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
+    <div id="modal-registro" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 relative transform scale-95 transition-transform duration-200" id="registro-contenido">
             <button onclick="cerrarModalesAuth()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6 text-center">Crea tu Cuenta</h3>
@@ -1231,6 +1304,10 @@
                     <label class="block text-gray-400 text-sm mb-1">Contraseña</label>
                     <input type="password" id="reg-contrasena" required class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
                 </div>
+                <label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer select-none">
+                    <input type="checkbox" id="check-privacidad-registro" class="mt-0.5 accent-brand-red w-4 h-4 flex-shrink-0">
+                    <span>Acepto las <a href="#" onclick="abrirModalLegal('privacidad'); return false;" class="text-brand-yellow hover:underline">Políticas de Privacidad</a> (Ley N° 29733).</span>
+                </label>
                 <button type="submit" class="w-full bg-brand-yellow hover:bg-yellow-400 text-black py-3 rounded-xl font-bold transition-colors mt-4">Registrarse</button>
             </form>
         </div>
@@ -1239,7 +1316,7 @@
     <!-- ============================================================
          FASE 1: MODAL DE PERFIL
          ============================================================ -->
-    <div id="modal-perfil" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
+    <div id="modal-perfil" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 relative transform scale-95 transition-transform duration-200" id="perfil-contenido">
             <button onclick="cerrarModalPerfil()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <div class="text-center mb-6">
@@ -1259,54 +1336,61 @@
             <h4 class="text-white font-bold mb-2 text-sm">Método de Pago</h4>
             <p id="perfil-metodo-actual" class="text-gray-400 text-xs mb-3">—</p>
             <form onsubmit="guardarMetodoPago(event)" class="flex gap-2">
-                <input type="text" id="perfil-numero-tarjeta" placeholder="Simular tarjeta (16 dígitos)" class="flex-1 bg-dark-900 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-brand-red font-mono">
+                <input type="text" id="perfil-numero-tarjeta" inputmode="numeric" maxlength="19" oninput="formatearNumeroTarjetaEnVivo(this)" placeholder="Simular tarjeta (16 dígitos)" class="flex-1 bg-dark-900 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm outline-none focus:border-brand-red font-mono">
                 <button type="submit" class="bg-brand-yellow hover:bg-yellow-400 text-black px-4 rounded-lg font-bold text-sm transition-colors">Guardar</button>
             </form>
         </div>
     </div>
 
     <!-- ============================================================
-         FASE 4: MODAL DE CONTACTO
+         VISTA: CONTACTO — Módulo 1: antes era modal, ahora vista completa
+         integrada a cambiarVista(), consistente con el resto del flujo.
          ============================================================ -->
-    <div id="modal-contacto" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
-        <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto hide-scrollbar" id="contacto-contenido">
-            <button onclick="cerrarModalContacto()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
-            <h3 class="text-2xl font-bold text-white mb-2 text-center">Contáctenos</h3>
-            <p class="text-gray-400 text-sm text-center mb-6">Escríbenos y te responderemos a la brevedad.</p>
-            <form id="formulario-contacto" onsubmit="manejarFormularioContacto(event)" class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-gray-400 text-sm mb-1">Nombres</label>
-                        <input type="text" id="contacto-nombres" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
+    <div id="vista-contacto" class="hidden w-full bg-dark-900 min-h-screen pb-32 opacity-0 transition-opacity duration-300 absolute top-0 left-0 z-30 pt-32">
+        <div class="max-w-lg mx-auto px-6">
+            <button onclick="cambiarVista('vista-contacto', vistaAnteriorAContacto || 'vista-inicio')" class="text-white/60 hover:text-white mb-6 flex items-center gap-2 transition-colors w-max">
+                <i class="fa-solid fa-arrow-left"></i> Volver
+            </button>
+            <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-xl">
+                <h3 class="text-2xl font-bold text-white mb-2 text-center">Contáctenos</h3>
+                <p class="text-gray-400 text-sm text-center mb-6">Escríbenos y te responderemos a la brevedad.</p>
+                <form id="formulario-contacto" onsubmit="manejarFormularioContacto(event)" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-400 text-sm mb-1">Nombres</label>
+                            <input type="text" id="contacto-nombres" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
+                        </div>
+                        <div>
+                            <label class="block text-gray-400 text-sm mb-1">Apellidos</label>
+                            <input type="text" id="contacto-apellidos" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-gray-400 text-sm mb-1">Apellidos</label>
-                        <input type="text" id="contacto-apellidos" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
+                        <label class="block text-gray-400 text-sm mb-1">Correo Electrónico</label>
+                        <input type="email" id="contacto-correo" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
                     </div>
-                </div>
-                <div>
-                    <label class="block text-gray-400 text-sm mb-1">Correo Electrónico</label>
-                    <input type="email" id="contacto-correo" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
-                </div>
-                <div>
-                    <label class="block text-gray-400 text-sm mb-1">Distrito</label>
-                    <select id="contacto-distrito" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
-                        <option value="">Selecciona tu distrito</option>
-                        <option value="Chimbote">Chimbote</option>
-                        <option value="Nuevo Chimbote">Nuevo Chimbote</option>
-                        <option value="Coishco">Coishco</option>
-                        <option value="Santa">Santa</option>
-                        <option value="Otro">Otro</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-gray-400 text-sm mb-1">Mensaje</label>
-                    <textarea id="contacto-mensaje" rows="4" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red resize-none"></textarea>
-                </div>
-                <button type="submit" class="w-full bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold transition-colors mt-2">Enviar Mensaje</button>
-            </form>
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-1">Distrito</label>
+                        <select id="contacto-distrito" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
+                            <option value="">Selecciona tu distrito</option>
+                            <option value="Chimbote">Chimbote</option>
+                            <option value="Nuevo Chimbote">Nuevo Chimbote</option>
+                            <option value="Coishco">Coishco</option>
+                            <option value="Santa">Santa</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-1">Mensaje</label>
+                        <textarea id="contacto-mensaje" rows="4" class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red resize-none"></textarea>
+                    </div>
+                    <button type="submit" class="w-full bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold transition-colors mt-2">Enviar Mensaje</button>
+                </form>
+            </div>
         </div>
     </div>
+
+    </div> <!-- /#contenedor-vistas -->
 
     <!-- ============================================================
          FASE 9: MODAL DE TRÁILER (reutilizable desde Detalle y Horarios)
@@ -1325,30 +1409,13 @@
     <!-- ============================================================
          FASE 7: MODAL INFORMATIVO GENÉRICO (enlaces del footer)
          ============================================================ -->
-    <div id="modal-legal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-legal" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[85vh] overflow-y-auto hide-scrollbar" id="legal-contenido">
             <button onclick="cerrarModalLegal()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <div id="legal-icono" class="w-14 h-14 rounded-full bg-brand-red/10 border border-brand-red/30 flex items-center justify-center mb-4"><i class="fa-solid fa-file-lines text-2xl text-brand-red"></i></div>
             <h3 id="legal-titulo" class="text-2xl font-bold text-white mb-4">Información</h3>
             <div id="legal-texto" class="text-gray-300 text-sm leading-relaxed space-y-3"></div>
             <button onclick="cerrarModalLegal()" class="w-full bg-brand-red hover:bg-brand-dark-red text-white py-3 rounded-xl font-bold transition-colors mt-6">Entendido</button>
-        </div>
-    </div>
-
-    <!-- ============================================================
-         FASE 8: MODAL DE CONFIRMACIÓN GENÉRICO (eliminar película/producto)
-         ============================================================ -->
-    <div id="modal-confirmar-eliminar" class="hidden fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
-        <div class="bg-dark-800 p-6 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full relative transform scale-95 transition-transform duration-200" id="confirmar-eliminar-contenido">
-            <div class="w-12 h-12 rounded-full bg-brand-red/10 border border-brand-red/30 flex items-center justify-center mb-4">
-                <i class="fa-solid fa-triangle-exclamation text-xl text-brand-red"></i>
-            </div>
-            <h3 class="text-lg font-bold text-white mb-2">¿Eliminar este elemento?</h3>
-            <p id="confirmar-eliminar-mensaje" class="text-gray-400 text-sm mb-6">Esta acción no se puede deshacer.</p>
-            <div class="flex gap-3">
-                <button onclick="cancelarConfirmacionEliminar()" class="flex-1 bg-dark-700 hover:bg-dark-600 text-white py-2.5 rounded-xl font-bold text-sm transition-colors">Cancelar</button>
-                <button onclick="confirmarEliminacionPendiente()" class="flex-1 bg-brand-red hover:bg-brand-dark-red text-white py-2.5 rounded-xl font-bold text-sm transition-colors">Sí, eliminar</button>
-            </div>
         </div>
     </div>
 
@@ -1392,7 +1459,6 @@
                 <ul class="text-gray-400 text-sm space-y-2">
                     <li><a href="#" class="hover:text-brand-yellow transition-colors" onclick="abrirModalLegal('terminos'); return false;">Términos y Condiciones</a></li>
                     <li><a href="#" class="hover:text-brand-yellow transition-colors" onclick="abrirModalLegal('privacidad'); return false;">Políticas de Privacidad</a></li>
-                    <li><a href="#" class="hover:text-brand-yellow transition-colors" onclick="abrirModalLegal('reclamaciones'); return false;">Libro de Reclamaciones</a></li>
                 </ul>
             </div>
             <div>
@@ -1411,6 +1477,7 @@
          incluso abriendo index.html directamente con file://, sin servidor. -->
     <script src="./assets/js/estado.js"></script>
     <script src="./assets/js/utilidades.js"></script>
+    <script src="./assets/js/modales.js"></script>
     <script src="./assets/js/cliente.js"></script>
     <script src="./assets/js/admin.js"></script>
     <script src="./assets/js/chatbot.js"></script>

@@ -32,9 +32,41 @@ function cambiarVista(idDesde, idHacia) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         vistaActualVisible = idHacia;
         renderizarStepperCompra(idHacia); // FASE 15: indicador de progreso de la compra
+        ajustarAlturaContenedorVistas(idHacia); // Módulo 1: footer estático al final del contenido
+        actualizarVisibilidadFooter();          // Módulo 1: footer oculto en panel admin
     }, 300);
 }
 window.cambiarVista = cambiarVista;
+
+/* ============================================================================
+   MÓDULO 1 — FOOTER INTELIGENTE
+   ------------------------------------------------------------------------
+   Las vistas viven superpuestas dentro de #contenedor-vistas (una en flujo
+   normal — vista-inicio —, el resto position:absolute). Como los elementos
+   absolutos no aportan altura a su contenedor, fijamos manualmente el
+   min-height del contenedor según la vista activa para que el <footer>,
+   que va justo después en el flujo normal del documento, quede siempre
+   estático al final del contenido visible (nunca flotando ni encima).
+   ============================================================================ */
+function ajustarAlturaContenedorVistas(idVista) {
+    const contenedor = document.getElementById('contenedor-vistas');
+    const vista = document.getElementById(idVista);
+    if (!contenedor || !vista) return;
+    // requestAnimationFrame: esperamos a que el navegador ya haya pintado
+    // el contenido nuevo (innerHTML recién asignado) antes de medir su alto.
+    requestAnimationFrame(() => {
+        contenedor.style.minHeight = `${vista.scrollHeight}px`;
+    });
+}
+
+/** Oculta el footer dentro del panel admin, o si el usuario logueado es admin. */
+function actualizarVisibilidadFooter() {
+    const footer = document.querySelector('footer');
+    if (!footer) return;
+    const debeOcultarse = (usuarioActual && usuarioActual.rol === 'admin') || vistaActualVisible === 'vista-administrador';
+    footer.classList.toggle('hidden', Boolean(debeOcultarse));
+}
+window.actualizarVisibilidadFooter = actualizarVisibilidadFooter;
 
 /* ============================================================================
    FASE 15 — INDICADOR DE PROGRESO DE LA COMPRA (stepper)
@@ -118,6 +150,85 @@ window.addEventListener('scroll', () => {
 
 
 /* ============================================================================
+   MÓDULO 6 — BANNER DINÁMICO (Home)
+   ------------------------------------------------------------------------
+   Lee bannerPeliculasIds (persistido por el admin desde Cartelera) y arma
+   los slides en vivo, resolviendo cada ID contra baseDatosPeliculas o
+   baseDatosEstrenos. Si el admin no eligió ninguna, cae de respaldo a las
+   2 primeras películas de Cartelera para que el home nunca quede vacío.
+   ============================================================================ */
+let indiceSlideActivo = 0;
+
+/** Devuelve el array de objetos-película a mostrar en el banner (ya resueltos, nunca IDs sueltos). */
+function obtenerPeliculasParaBanner() {
+    const desdeAdmin = bannerPeliculasIds.map(id => resolverPeliculaBanner(id)).filter(Boolean);
+    if (desdeAdmin.length > 0) return desdeAdmin;
+    return Object.values(baseDatosPeliculas).slice(0, 2); // respaldo: nunca mostrar un banner vacío
+}
+
+function renderizarBannerPrincipal() {
+    const contenedor = document.getElementById('carrusel-slides');
+    if (!contenedor) return;
+    const peliculas = obtenerPeliculasParaBanner();
+    indiceSlideActivo = 0;
+
+    if (peliculas.length === 0) {
+        contenedor.innerHTML = '';
+        return;
+    }
+
+    contenedor.innerHTML = peliculas.map((p, i) => {
+        const esPreEstreno = p.tipoLanzamiento === 'Pre-Estreno';
+        const etiqueta = esPreEstreno ? 'Preventa Exclusiva' : (baseDatosEstrenos[p.id] ? 'Próximo Estreno' : 'Estreno');
+        const claseEtiqueta = esPreEstreno ? 'bg-brand-yellow text-black' : 'bg-brand-red text-white';
+        const esCartelera = Boolean(baseDatosPeliculas[p.id]);
+        const textoBotonCompra = esPreEstreno ? 'Comprar Preventa' : 'Comprar Entradas';
+        const claseBotonCompra = esPreEstreno
+            ? 'bg-brand-yellow hover:bg-yellow-400 text-black shadow-yellow-500/40'
+            : 'bg-brand-red hover:bg-brand-dark-red text-white shadow-red-500/40';
+        // Estrenos aún sin funciones: el botón de compra no aplica, solo tráiler.
+        const botonCompraHTML = esCartelera
+            ? `<button onclick="abrirHorarios('${p.id}')" class="${claseBotonCompra} px-8 py-3 rounded-full font-bold text-lg shadow-lg transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-ticket"></i> ${textoBotonCompra}
+                </button>`
+            : '';
+
+        return `
+            <div class="carousel-item${i === 0 ? ' active' : ''}">
+                <div class="absolute inset-0 bg-cover bg-center" style="background-image: url('${p.banner || p.poster}');"></div>
+                <div class="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent"></div>
+                <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent"></div>
+                <div class="absolute inset-0 flex flex-col justify-center px-6 md:px-20 max-w-4xl z-20">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="px-3 py-1 ${claseEtiqueta} text-xs font-bold rounded-full w-max uppercase tracking-wider">${etiqueta}</span>
+                        <span class="bg-white/10 backdrop-blur-sm border border-white/20 px-2 py-1 rounded text-xs font-bold text-white">${p.clasificacion}</span>
+                    </div>
+                    <h1 class="text-5xl md:text-7xl font-bold text-white mb-4 leading-tight">${p.titulo}</h1>
+                    <p class="text-gray-300 text-lg md:text-xl mb-6 max-w-2xl line-clamp-3">${p.sinopsis || ''}</p>
+                    <div class="flex flex-wrap gap-4 items-center">
+                        ${botonCompraHTML}
+                        <button onclick="abrirDetallePelicula('${p.id}', '${esCartelera ? 'cartelera' : 'estreno'}')" class="bg-white/10 hover:bg-white/20 text-white backdrop-blur-md px-8 py-3 rounded-full font-bold text-lg border border-white/20 transition-all flex items-center gap-2">
+                            <i class="fa-solid fa-play"></i> Ver Tráiler
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+    }).join('');
+
+    const botonesNav = document.querySelectorAll('#slide-anterior, #slide-siguiente');
+    botonesNav.forEach(btn => btn.classList.toggle('hidden', peliculas.length <= 1));
+}
+
+/** Avanza/retrocede el carrusel del banner. dir: -1 (anterior) | 1 (siguiente). */
+window.moverCarrusel = (dir) => {
+    const slides = document.querySelectorAll('#carrusel-slides .carousel-item');
+    if (slides.length === 0) return;
+    slides[indiceSlideActivo].classList.remove('active');
+    indiceSlideActivo = (indiceSlideActivo + dir + slides.length) % slides.length;
+    slides[indiceSlideActivo].classList.add('active');
+};
+
+/* ============================================================================
    5. RENDERIZADO DE INICIO (cartelera / estrenos)
    ============================================================================ */
 
@@ -168,6 +279,8 @@ const renderizarGridsInicio = () => {
             </article>
         `;
     });
+
+    renderizarBannerPrincipal(); // Módulo 6: el banner depende del mismo catálogo, se refresca junto con los grids
 };
 
 
@@ -240,6 +353,13 @@ window.abrirHorarios = (peliculaId) => {
     estadoPedido.modoDirecto = false;
     estadoPedido.pelicula = pelicula;
     estadoPedido.formato = null; estadoPedido.hora = null; estadoPedido.fecha = null;
+
+    // Módulo 1 — fix bug de memoria: la barra flotante "Elegir Asientos" no vive
+    // dentro del innerHTML que se regenera en renderizarContenidoHorarios(), así
+    // que si no la ocultamos aquí, queda visible arrastrando la selección de
+    // una película anterior al entrar a una nueva.
+    const barraConfirmacion = document.getElementById('barra-confirmacion-horario');
+    if (barraConfirmacion) barraConfirmacion.classList.add('translate-y-full');
 
     const fechasDisponibles = Object.keys(pelicula.horarios);
     estadoPedido.fecha = fechasDisponibles[0];
@@ -371,30 +491,10 @@ window.irAAsientos = () => {
     estadoPedido.asientos = [];
     renderizarGridAsientos();
     actualizarResumenAsientos();
-
-    if (window.innerWidth >= 1024) togglePanelInfoAsientos(true);
-    else togglePanelInfoAsientos(false);
+    actualizarBadgeTarifaVigente(); // Módulo 2: muestra la tarifa vigente antes de seleccionar
 
     cambiarVista('vista-horarios', 'vista-asientos');
-};
-
-window.togglePanelInfoAsientos = (forzarEstado = null) => {
-    const panel = document.getElementById('panel-info-asientos');
-    const contenedorPrincipal = document.getElementById('contenedor-principal-asientos');
-    const icono = document.getElementById('icono-toggle-panel');
-
-    if (forzarEstado !== null) panelAbierto = forzarEstado;
-    else panelAbierto = !panelAbierto;
-
-    if (panelAbierto) {
-        panel.classList.add('panel-open');
-        icono.classList.replace('fa-chevron-right', 'fa-chevron-left');
-        if (window.innerWidth >= 1024) contenedorPrincipal.style.marginLeft = '320px';
-    } else {
-        panel.classList.remove('panel-open');
-        icono.classList.replace('fa-chevron-left', 'fa-chevron-right');
-        if (window.innerWidth >= 1024) contenedorPrincipal.style.marginLeft = '80px';
-    }
+    iniciarTemporizadorCompra(); // Módulo 2: el temporizador de compra empieza aquí
 };
 
 const renderizarGridAsientos = () => {
@@ -415,6 +515,65 @@ const renderizarGridAsientos = () => {
     }).join('');
 };
 
+/* ============================================================================
+   MÓDULO 2 — MOTOR DE TARIFAS DINÁMICAS
+   ============================================================================ */
+const MESES_ABREV_A_INDICE = { 'Ene': 0, 'Feb': 1, 'Mar': 2, 'Abr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Ago': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dic': 11 };
+const DIAS_SEMANA_ABREV = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+/** Convierte una etiqueta de horario ("Jue, 27 Ago" / "Hoy, 26 Ago") en fecha ISO (YYYY-MM-DD) del año en curso. */
+function resolverFechaISODeEtiqueta(etiquetaFecha) {
+    if (!etiquetaFecha) return null;
+    const partes = etiquetaFecha.split(',');
+    if (partes.length < 2) return null;
+    const resto = partes[1].trim().split(' ');
+    const dia = parseInt(resto[0], 10);
+    const mesIndice = MESES_ABREV_A_INDICE[resto[1]];
+    if (isNaN(dia) || mesIndice === undefined) return null;
+    const anio = new Date().getFullYear();
+    return `${anio}-${String(mesIndice + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+/** Devuelve la abreviatura de día (Dom..Sáb) de una etiqueta de horario, resolviendo "Hoy"/"Mañana" con la fecha real. */
+function resolverAbreviaturaDiaDeEtiqueta(etiquetaFecha) {
+    if (!etiquetaFecha) return null;
+    const prefijo = etiquetaFecha.split(',')[0].trim();
+    if (prefijo === 'Hoy' || prefijo === 'Mañana') {
+        const base = new Date();
+        if (prefijo === 'Mañana') base.setDate(base.getDate() + 1);
+        return DIAS_SEMANA_ABREV[base.getDay()];
+    }
+    return DIAS_SEMANA_ABREV.includes(prefijo) ? prefijo : null;
+}
+
+/**
+ * Calcula la tarifa vigente para la función actualmente seleccionada
+ * (estadoPedido.pelicula + estadoPedido.fecha), siguiendo la jerarquía
+ * estricta del negocio. Todos los asientos de una misma función pagan esta
+ * misma tarifa (ya no hay distinción por tipo de entrada).
+ */
+function calcularTarifaFuncionActual() {
+    const pelicula = estadoPedido.pelicula;
+
+    // 1) Pre-estreno
+    if (pelicula && pelicula.tipoLanzamiento === 'Pre-Estreno') return TARIFA_FERIADO_FIN_DE_SEMANA;
+
+    // 2) Feriado / día no laborable (calendario del admin — Módulo 4 le pone UI)
+    const fechaISO = resolverFechaISODeEtiqueta(estadoPedido.fecha);
+    if (fechaISO && esFechaFeriadoONoLaborable(fechaISO)) return TARIFA_FERIADO_FIN_DE_SEMANA;
+
+    // 3-5) Según día de la semana
+    const abreviaturaDia = resolverAbreviaturaDiaDeEtiqueta(estadoPedido.fecha);
+    return TARIFAS_POR_DIA_SEMANA[abreviaturaDia] ?? TARIFA_FERIADO_FIN_DE_SEMANA; // fallback seguro
+}
+
+/** Actualiza el badge de "tarifa vigente" que se muestra sobre el mapa de asientos. */
+function actualizarBadgeTarifaVigente() {
+    const el = document.getElementById('texto-tarifa-vigente');
+    if (!el) return;
+    el.textContent = `${formatearMoneda(calcularTarifaFuncionActual())} c/u`;
+}
+
 window.clickAsiento = (asientoId) => {
     const indiceExistente = estadoPedido.asientos.findIndex(s => s.id === asientoId);
     const btn = document.getElementById(`asiento-btn-${asientoId}`);
@@ -424,55 +583,23 @@ window.clickAsiento = (asientoId) => {
         btn.classList.remove('selected', 'bg-brand-red');
         if (btn.dataset.accesible === 'true') btn.classList.add('asiento-cliente-accesible');
         else btn.classList.add('bg-green-600');
-        actualizarResumenAsientos();
     } else {
-        asientoPendienteId = asientoId;
-        document.getElementById('modal-asiento-id').textContent = asientoId;
-
-        const contenedor = document.getElementById('contenedor-tipos-entrada');
-        contenedor.innerHTML = '';
-        for (const [key, detalles] of Object.entries(PRECIOS.entradas)) {
-            contenedor.innerHTML += `
-                <button onclick="confirmarTipoEntrada('${key}')" class="w-full flex justify-between items-center bg-dark-900 hover:bg-dark-700 border border-white/10 p-4 rounded-xl transition-colors text-left">
-                    <span class="font-bold text-white">${detalles.label}</span>
-                    <span class="text-brand-yellow font-bold">${formatearMoneda(detalles.precio)}</span>
-                </button>
-            `;
+        // Módulo 6: límite máximo de asientos por transacción.
+        if (estadoPedido.asientos.length >= MAX_ASIENTOS_POR_COMPRA) {
+            mostrarToast(`Solo puedes seleccionar hasta ${MAX_ASIENTOS_POR_COMPRA} asientos por compra.`, 'error');
+            return;
         }
-
-        const modal = document.getElementById('modal-tipo-entrada');
-        const contenido = document.getElementById('modal-tipo-entrada-contenido');
-        modal.classList.remove('hidden');
-        setTimeout(() => {
-            modal.classList.remove('opacity-0');
-            contenido.classList.remove('scale-95');
-        }, 10);
+        // Módulo 2: ya no se pregunta el tipo de entrada; el precio lo determina
+        // automáticamente la tarifa vigente de la función (calcularTarifaFuncionActual).
+        estadoPedido.asientos.push({
+            id: asientoId,
+            tipoLabel: 'Entrada General',
+            precio: calcularTarifaFuncionActual()
+        });
+        btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+        btn.classList.add('selected');
     }
-};
-
-window.cerrarModalTipoEntrada = () => {
-    const modal = document.getElementById('modal-tipo-entrada');
-    const contenido = document.getElementById('modal-tipo-entrada-contenido');
-    modal.classList.add('opacity-0');
-    contenido.classList.add('scale-95');
-    setTimeout(() => { modal.classList.add('hidden'); asientoPendienteId = null; }, 200);
-};
-
-window.confirmarTipoEntrada = (claveTipo) => {
-    if (!asientoPendienteId) return;
-
-    estadoPedido.asientos.push({
-        id: asientoPendienteId,
-        tipoLabel: PRECIOS.entradas[claveTipo].label,
-        precio: PRECIOS.entradas[claveTipo].precio
-    });
-
-    const btn = document.getElementById(`asiento-btn-${asientoPendienteId}`);
-    btn.classList.remove('bg-green-600', 'hover:bg-green-500');
-    btn.classList.add('selected');
-
     actualizarResumenAsientos();
-    cerrarModalTipoEntrada();
 };
 
 const actualizarResumenAsientos = () => {
@@ -513,6 +640,130 @@ const actualizarResumenAsientos = () => {
 
 
 /* ============================================================================
+   MÓDULO 2 — TEMPORIZADOR DE COMPRA
+   ------------------------------------------------------------------------
+   Arranca al entrar a asientos, se reinicia cada vez que se avanza de etapa
+   (asientos -> dulcería -> pago). Si llega a 0, se muestra un modal de
+   "permanencia" con 30s de gracia: si el usuario confirma que sigue ahí, se
+   reinicia; si no responde a tiempo (o cancela), se limpia todo y se vuelve
+   al inicio.
+   ============================================================================ */
+function iniciarTemporizadorCompra() {
+    detenerTemporizadorCompra(); // por si ya había uno corriendo (evita duplicados)
+    segundosRestantesCompra = DURACION_TEMPORIZADOR_COMPRA_SEGUNDOS;
+    mostrarBadgeTemporizador();
+    actualizarTextoBadgeTemporizador();
+    idIntervaloTemporizadorCompra = setInterval(() => {
+        segundosRestantesCompra--;
+        actualizarTextoBadgeTemporizador();
+        if (segundosRestantesCompra <= 0) {
+            clearInterval(idIntervaloTemporizadorCompra);
+            idIntervaloTemporizadorCompra = null;
+            manejarExpiracionTemporizadorCompra();
+        }
+    }, 1000);
+}
+
+/** Se llama al avanzar de etapa dentro del flujo de compra ya iniciado. */
+function reiniciarTemporizadorCompra() {
+    if (!estadoPedido.pelicula && !estadoPedido.modoDirecto) return; // no hay compra en curso
+    iniciarTemporizadorCompra();
+}
+
+function detenerTemporizadorCompra() {
+    if (idIntervaloTemporizadorCompra) { clearInterval(idIntervaloTemporizadorCompra); idIntervaloTemporizadorCompra = null; }
+    ocultarBadgeTemporizador();
+}
+
+function mostrarBadgeTemporizador() {
+    const badge = document.getElementById('badge-temporizador-compra');
+    if (badge) badge.classList.remove('hidden');
+}
+function ocultarBadgeTemporizador() {
+    const badge = document.getElementById('badge-temporizador-compra');
+    if (badge) badge.classList.add('hidden');
+}
+function actualizarTextoBadgeTemporizador() {
+    const el = document.getElementById('badge-temporizador-texto');
+    if (!el) return;
+    const segundos = Math.max(segundosRestantesCompra, 0);
+    el.textContent = `${String(Math.floor(segundos / 60)).padStart(2, '0')}:${String(segundos % 60).padStart(2, '0')}`;
+    const badge = document.getElementById('badge-temporizador-compra');
+    if (badge) badge.classList.toggle('badge-temporizador-urgente', segundos <= 60);
+}
+
+/** Modal de permanencia: 30s de gracia antes de perder la compra por inactividad. */
+async function manejarExpiracionTemporizadorCompra() {
+    ocultarBadgeTemporizador();
+    const continuar = await confirmarAccion({
+        titulo: '¿Sigues ahí?',
+        mensaje: 'Tu tiempo para completar la compra expiró por inactividad. Si no respondes, en 30 segundos volverás al inicio y perderás tu selección.',
+        tipo: 'advertencia',
+        textoConfirmar: 'Seguir comprando',
+        textoCancelar: 'Salir ahora',
+        tiempoLimiteMs: DURACION_GRACIA_PERMANENCIA_SEGUNDOS * 1000
+    });
+
+    if (continuar) {
+        reiniciarTemporizadorCompra();
+    } else {
+        mostrarToast('Tu sesión de compra expiró por inactividad.', 'info');
+        limpiarEstadoPedido();
+        cambiarVista(vistaActualVisible, 'vista-inicio');
+    }
+}
+
+/* ============================================================================
+   MÓDULO 2 — PREVENCIÓN DE FUGA DE SESIÓN
+   ------------------------------------------------------------------------
+   Se usa desde los enlaces del navbar que rompen el flujo de compra (Inicio,
+   Promociones, Ubicación, logo, Dulcería directa). Si hay una compra en
+   curso (asientos y/o carrito con productos), pide confirmación antes de
+   navegar y perder el progreso.
+   ============================================================================ */
+
+/** Limpia por completo el pedido en curso y detiene el temporizador. Reutilizable desde cualquier salida del flujo. */
+function limpiarEstadoPedido() {
+    detenerTemporizadorCompra();
+    estadoPedido.pelicula = null;
+    estadoPedido.fecha = null;
+    estadoPedido.formato = null;
+    estadoPedido.hora = null;
+    estadoPedido.sala = null;
+    estadoPedido.asientos = [];
+    estadoPedido.carrito = {};
+    estadoPedido.modoDirecto = false;
+    estadoPedido.cupon = null;
+}
+
+/**
+ * Envuelve una navegación que rompe el flujo de compra. Si no hay nada que
+ * perder, navega directo; si hay asientos/dulces seleccionados, confirma antes.
+ * @param {Function} accionNavegacion - función que ejecuta la navegación real.
+ */
+async function intentarSalirDelFlujoDeCompra(accionNavegacion) {
+    // Módulo 6: hay "progreso" desde que se eligió película (Horarios en adelante), no solo con asientos/carrito ya elegidos.
+    const hayProgreso = estadoPedido.pelicula !== null
+        || (estadoPedido.asientos && estadoPedido.asientos.length > 0)
+        || (estadoPedido.carrito && Object.keys(estadoPedido.carrito).length > 0);
+
+    if (!hayProgreso) { accionNavegacion(); return; }
+
+    const salir = await confirmarAccion({
+        titulo: '¿Salir de la compra?',
+        mensaje: 'Tienes una compra en curso. Si sales ahora, perderás los asientos y/o productos que seleccionaste.',
+        tipo: 'advertencia',
+        textoConfirmar: 'Sí, salir',
+        textoCancelar: 'Seguir comprando'
+    });
+    if (salir) {
+        limpiarEstadoPedido();
+        accionNavegacion();
+    }
+}
+window.intentarSalirDelFlujoDeCompra = intentarSalirDelFlujoDeCompra;
+
+/* ============================================================================
    9. DULCERÍA (incluye FASE 3 — flujo directo sin película)
    ============================================================================ */
 
@@ -521,6 +772,7 @@ window.irADulceria = () => {
     actualizarResumenFinal();
     aplicarModoDirectoUI();
     cambiarVista('vista-asientos', 'vista-dulceria');
+    reiniciarTemporizadorCompra(); // Módulo 2: se avanzó de etapa
 };
 
 /**
@@ -540,6 +792,7 @@ window.abrirDulceriaDirecta = () => {
     aplicarModoDirectoUI();
     cambiarVista(vistaActualVisible, 'vista-dulceria');
     mostrarToast('Carrito de dulcería reiniciado. ¡Arma tu pedido!', 'info');
+    iniciarTemporizadorCompra(); // Módulo 2: también es una compra en curso
 };
 
 /** Muestra/oculta bloques relacionados a entradas según el modo actual. */
@@ -570,19 +823,35 @@ function filtrarProductosDulceria({ categoria = 'all', termino = '', soloConStoc
     });
 }
 
-/** Genera el bloque de ícono (FontAwesome) o imagen personalizada de un producto. Usado por cliente y admin. */
+/** Genera el bloque de imagen (o ícono legado de FontAwesome, para productos guardados antes del Módulo 4) de un producto. */
 function renderizarIconoOImagenProducto(prod) {
-    return prod.imagen
-        ? `<img src="${prod.imagen}" class="w-full h-full object-cover">`
-        : `<i class="fa-solid ${prod.icono}"></i>`;
+    if (prod.imagen) return `<img src="${prod.imagen}" class="w-full h-full object-cover">`;
+    if (prod.icono) return `<i class="fa-solid ${prod.icono}"></i>`;
+    return `<i class="fa-solid fa-image text-gray-600"></i>`; // Módulo 4: respaldo genérico si no hay ninguno de los dos
+}
+
+/** Módulo 6: pinta los botones de filtro de categoría según categoriasDulceria (dinámico, ya no hardcodeado en el HTML). */
+function renderizarFiltrosCategoriasDulceria() {
+    const contenedor = document.getElementById('categorias-dulceria');
+    if (!contenedor) return;
+    const categorias = [{ id: 'all', nombre: 'Todos' }, ...categoriasDulceria];
+    contenedor.innerHTML = categorias.map(cat => `
+        <button onclick="renderizarGridDulceria('${cat.id}')" data-categoria="${cat.id}" class="cat-btn px-4 py-2 text-gray-400 font-semibold hover:text-white whitespace-nowrap border-b-2 border-transparent">${cat.nombre}</button>
+    `).join('');
 }
 
 window.renderizarGridDulceria = (filtroCategoria) => {
+    renderizarFiltrosCategoriasDulceria(); // Módulo 6: reconstruye los botones por si las categorías cambiaron en el admin
     document.querySelectorAll('#categorias-dulceria .cat-btn').forEach(btn => {
         btn.classList.remove('text-brand-yellow', 'border-brand-yellow');
         btn.classList.add('text-gray-400', 'border-transparent');
     });
-    const btnClickeado = event ? event.currentTarget : document.querySelector('#categorias-dulceria .cat-btn');
+    // Módulo 1 — fix bug "Todos" no marcado: antes se dependía del objeto
+    // global 'event' (event.currentTarget), que al llamar la función de forma
+    // programática (irADulceria/abrirDulceriaDirecta) apuntaba al último botón
+    // clickeado en la app, no al botón de categoría real. Ahora se busca
+    // directamente el botón que corresponde al filtro activo.
+    const btnClickeado = document.querySelector(`#categorias-dulceria .cat-btn[data-categoria="${filtroCategoria}"]`);
     if (btnClickeado && btnClickeado.classList) {
         btnClickeado.classList.remove('text-gray-400', 'border-transparent');
         btnClickeado.classList.add('text-brand-yellow', 'border-brand-yellow');
@@ -681,6 +950,12 @@ const actualizarResumenFinal = () => {
    ============================================================================ */
 
 window.irAPago = () => {
+    // Módulo 2 — validador: en Dulcería Directa no se puede pasar a pago sin productos.
+    if (estadoPedido.modoDirecto && Object.keys(estadoPedido.carrito).length === 0) {
+        mostrarToast('Selecciona al menos un producto antes de continuar.', 'error');
+        return;
+    }
+
     const bloquePelicula = document.getElementById('bloque-pelicula-pago');
     if (estadoPedido.modoDirecto || !estadoPedido.pelicula) {
         bloquePelicula.classList.add('hidden');
@@ -695,11 +970,14 @@ window.irAPago = () => {
     if (inputCupon) inputCupon.value = '';
     const filaDescuento = document.getElementById('fila-descuento-cupon');
     if (filaDescuento) filaDescuento.classList.add('hidden');
+    const checkPrivacidad = document.getElementById('check-privacidad-pago');
+    if (checkPrivacidad) checkPrivacidad.checked = false;
 
     aplicarModoDirectoUI();
     recalcularTotalesPago();
     autocompletarCheckout(); // FASE 7: rellena datos del socio si hay sesión iniciada
     cambiarVista('vista-dulceria', 'vista-pago');
+    reiniciarTemporizadorCompra(); // Módulo 2: se avanzó de etapa
 };
 
 /** FASE 8: inserta un badge "Autocompletado desde tu cuenta" bajo un campo, sin duplicarlo si ya existe. */
@@ -872,7 +1150,18 @@ function validarFormularioPago() {
         );
     }
 
-    return validarFormulario(reglas);
+    const valido = validarFormulario(reglas);
+
+    // Módulo 2 — Ley N° 29733: checkbox obligatorio de aceptación de Políticas de Privacidad.
+    const checkPrivacidad = document.getElementById('check-privacidad-pago');
+    if (checkPrivacidad && !checkPrivacidad.checked) {
+        mostrarToast('Debes aceptar las Políticas de Privacidad para continuar.', 'error');
+        checkPrivacidad.closest('label')?.classList.add('campo-invalido');
+        return false;
+    }
+    checkPrivacidad?.closest('label')?.classList.remove('campo-invalido');
+
+    return valido;
 }
 
 
@@ -982,6 +1271,7 @@ function finalizarProcesamientoPago() {
     }
 
     mostrarToast('¡Pago procesado con éxito! Aquí está tu ticket.', 'exito');
+    detenerTemporizadorCompra(); // Módulo 2: la compra se completó, ya no aplica
     cambiarVista('vista-pago', 'vista-ticket');
 };
 
@@ -1059,6 +1349,13 @@ window.manejarRegistro = (e) => {
         { input: inputContrasena, prueba: () => Validadores.contrasena(inputContrasena.value), mensaje: 'La contraseña debe tener al menos 6 caracteres.' }
     ]);
     if (!valido) return;
+
+    // Módulo 2 — Ley N° 29733: checkbox obligatorio de aceptación de Políticas de Privacidad.
+    const checkPrivacidad = document.getElementById('check-privacidad-registro');
+    if (checkPrivacidad && !checkPrivacidad.checked) {
+        mostrarToast('Debes aceptar las Políticas de Privacidad para registrarte.', 'error');
+        return;
+    }
 
     const nombre = inputNombre.value.trim();
     const correo = inputCorreo.value.trim().toLowerCase();
@@ -1160,6 +1457,8 @@ window.actualizarNavbarAuth = () => {
         if (menuUsuarioMovil) { menuUsuarioMovil.classList.add('hidden'); menuUsuarioMovil.classList.remove('flex'); }
         if (linkAdminMovil) linkAdminMovil.classList.add('hidden');
     }
+
+    if (typeof actualizarVisibilidadFooter === 'function') actualizarVisibilidadFooter(); // Módulo 1
 };
 
 /** FASE 7: abre/cierra el menú hamburguesa (drawer) en dispositivos móviles. */
@@ -1307,17 +1606,13 @@ window.guardarMetodoPago = (e) => {
    14. FASE 4 — MODAL DE CONTACTO Y VISTA DE UBICACIÓN (Leaflet)
    ============================================================================ */
 
-window.abrirModalContacto = () => {
-    const modal = document.getElementById('modal-contacto');
-    modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('contacto-contenido').classList.remove('scale-95'); }, 10);
-};
+// Módulo 1: recordamos desde qué vista se entró a Contacto para que el botón "Volver" regrese ahí.
+let vistaAnteriorAContacto = 'vista-inicio';
 
-window.cerrarModalContacto = () => {
-    const modal = document.getElementById('modal-contacto');
-    modal.classList.add('opacity-0');
-    document.getElementById('contacto-contenido').classList.add('scale-95');
-    setTimeout(() => modal.classList.add('hidden'), 200);
+/** Navega a la vista completa de Contacto (Módulo 1: antes era un modal). */
+window.irAVistaContacto = () => {
+    vistaAnteriorAContacto = vistaActualVisible;
+    cambiarVista(vistaActualVisible, 'vista-contacto');
 };
 
 window.manejarFormularioContacto = (e) => {
@@ -1341,7 +1636,7 @@ window.manejarFormularioContacto = (e) => {
     // Simulación de envío (no hay backend real conectado)
     mostrarToast('¡Gracias! Recibimos tu mensaje y te contactaremos pronto.', 'exito');
     document.getElementById('formulario-contacto').reset();
-    cerrarModalContacto();
+    cambiarVista('vista-contacto', vistaAnteriorAContacto || 'vista-inicio');
 };
 
 let mapaLeafletInstancia = null;
@@ -1401,19 +1696,7 @@ function renderizarPromociones() {
     const grid = document.getElementById('grid-promociones');
     if (!grid) return;
 
-    const promoMartesActiva = localStorage.getItem('cinerama_promo_martes2x1') === 'true';
-
     let html = `
-        <div class="bg-dark-800 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-brand-red/50 transition-colors flex flex-col">
-            <div class="h-40 bg-gradient-to-br from-brand-red to-brand-dark-red flex items-center justify-center">
-                <i class="fa-solid fa-clone text-6xl text-white/90"></i>
-            </div>
-            <div class="p-6 flex flex-col flex-grow">
-                <span class="inline-block w-max px-3 py-1 ${promoMartesActiva ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'} border text-xs font-bold rounded-full uppercase mb-3">${promoMartesActiva ? 'Activa hoy' : 'Próximamente'}</span>
-                <h3 class="text-xl font-bold text-white mb-2">Martes 2x1 en Entradas 2D</h3>
-                <p class="text-gray-400 text-sm flex-grow">Todos los martes, lleva a un acompañante gratis comprando una entrada 2D en funciones seleccionadas.</p>
-            </div>
-        </div>
         <div class="bg-dark-800 border border-white/5 rounded-2xl overflow-hidden shadow-xl hover:border-brand-yellow/50 transition-colors flex flex-col">
             <div class="h-40 bg-gradient-to-br from-brand-yellow to-yellow-600 flex items-center justify-center">
                 <i class="fa-solid fa-heart text-6xl text-black/80"></i>
