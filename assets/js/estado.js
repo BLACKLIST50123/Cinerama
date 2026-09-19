@@ -42,6 +42,17 @@ const LS_SALAS_MANTENIMIENTO = 'cinerama_salas_mantenimiento';
 const NUMERO_TOTAL_SALAS = 8;
 const LS_VENTAS_ASIENTOS = 'cinerama_ventas_asientos'; // FASE 10: registro persistente de butacas vendidas por sala
 
+// --- FIX (corrección solicitada): ventas por FUNCIÓN real (no solo por sala) ---
+// Cada registro de LS_VENTAS_ASIENTOS ahora también guarda fecha/hora de la función,
+// para que una butaca vendida en un horario no bloquee esa misma butaca en otro horario
+// distinto de la misma sala. Ver utilidades.js -> registrarVentaAsientos/obtenerButacasVendidas.
+
+// --- FIX (corrección solicitada): bloqueo temporal real de butacas entre pestañas/usuarios ---
+// LS_BUTACAS_BLOQUEADAS (arriba) quedó declarada pero nunca se llegó a usar en el flujo real;
+// esta es la implementación funcional, basada en localStorage (compartido entre pestañas del
+// mismo navegador) + un id de sesión por pestaña (sessionStorage). Ver utilidades.js.
+const LS_BLOQUEOS_ASIENTOS = 'cinerama_bloqueos_asientos_temporales';
+
 // --- MÓDULO 6: BANNER DINÁMICO Y CATEGORÍAS DINÁMICAS DE DULCERÍA ---
 const LS_BANNER = 'cinerama_banner';                         // array de IDs de película, en el orden del carrusel
 const LS_CATEGORIAS_DULCERIA = 'cinerama_categorias_dulceria'; // array de { id, nombre }
@@ -67,6 +78,14 @@ const DURACION_TEMPORIZADOR_COMPRA_SEGUNDOS = 5 * 60; // 5 minutos desde que se 
 const DURACION_GRACIA_PERMANENCIA_SEGUNDOS = 30;       // gracia del modal "¿Sigues ahí?"
 let segundosRestantesCompra = 0;
 let idIntervaloTemporizadorCompra = null;
+
+// FIX — bloqueo temporal real: la reserva de una butaca dura lo mismo que el temporizador
+// de compra, y se renueva junto con él cada vez que se avanza de etapa.
+const DURACION_BLOQUEO_ASIENTO_SEGUNDOS = DURACION_TEMPORIZADOR_COMPRA_SEGUNDOS;
+let idIntervaloRefrescoAsientos = null; // refresca el mapa de asientos en vivo mientras vista-asientos está visible
+
+// FIX — libro de ventas global (incluye compras de invitados, no solo de usuarios logueados).
+const LS_VENTAS_GENERAL = 'cinerama_ventas_general';
 
 /* ============================================================================
    2. BASE DE DATOS MOCK
@@ -199,11 +218,11 @@ const baseDatosPeliculas = {
     'spiderman': {
         id: 'spiderman',
         titulo: 'Spider-Man: Un Nuevo Día',
-        banner: 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?q=80&w=2070',
-        poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=600',
+        banner: 'assets/img/banners/SpidermanHorizontal.jpg',
+        poster: 'assets/img/posters/Spiderman.webp',
         genero: 'Acción / Aventura', clasificacion: 'APT', duracion: '2h 25m', tipoLanzamiento: 'Estreno',
         sinopsis: 'Peter Parker se enfrenta a su mayor desafío cuando las barreras entre multiversos colisionan inesperadamente. Viejos enemigos de realidades alternativas llegan a Nueva York, y Peter deberá aliarse con versiones de sí mismo para restaurar el equilibrio antes de que su mundo sea destruido por completo.',
-        trailer: 'https://www.youtube.com/embed/t06RUxPbp_c?si=Rj4D-H8eK0oD932R',
+        trailer: 'https://www.youtube.com/watch?v=QXibcL7-XbU',
         horarios: {
             'Hoy, 26 Ago': [
                 { formato: '2D Doblada', horas: [{ hora: '13:00', sala: 1 }, { hora: '15:30', sala: 1 }, { hora: '18:00', sala: 2 }] },
@@ -222,11 +241,11 @@ const baseDatosPeliculas = {
     'demonio': {
         id: 'demonio',
         titulo: 'La Noche del Demonio',
-        banner: 'https://images.unsplash.com/photo-1505635552518-3448ff116af3?q=80&w=2070',
-        poster: 'https://images.unsplash.com/photo-1605806616949-1e87b487cb2a?q=80&w=600',
+        banner: 'assets/img/banners/LaNocheDelDemonioHorizontal.jpg',
+        poster: 'assets/img/posters/LaNocheDelDemonio.jpg',
         genero: 'Terror / Suspenso', clasificacion: '+14', duracion: '1h 46m', tipoLanzamiento: 'Pre-Estreno',
         sinopsis: 'Una familia se muda a una nueva casa buscando un nuevo comienzo, solo para descubrir que el lugar está plagado de entidades oscuras. A medida que las manifestaciones empeoran, descubren que el verdadero mal no reside en la casa, sino que ha poseído a su hijo menor.',
-        trailer: 'https://www.youtube.com/embed/zuZnRUxPbp_c',
+        trailer: 'https://www.youtube.com/watch?v=orvNgTGq6cg',
         horarios: {
             'Hoy, 26 Ago': [
                 { formato: '2D Doblada', horas: [{ hora: '16:00', sala: 4 }, { hora: '21:00', sala: 4 }] },

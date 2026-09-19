@@ -13,7 +13,40 @@
    4. NAVEGACIÓN ENTRE VISTAS
    ============================================================================ */
 
-function cambiarVista(idDesde, idHacia) {
+// FIX — vistas que forman parte del flujo de compra (entradas y/o dulcería).
+const VISTAS_FLUJO_COMPRA = ['vista-horarios', 'vista-asientos', 'vista-dulceria', 'vista-pago'];
+// FIX — pares "origen|destino" entre los que SÍ se puede navegar libremente dentro del flujo
+// (avanzar o retroceder un paso). Cualquier otro destino saliendo de una vista del flujo se
+// trata como una fuga y pasa por la misma advertencia de intentarSalirDelFlujoDeCompra().
+const TRANSICIONES_PERMITIDAS_EN_FLUJO_COMPRA = new Set([
+    'vista-horarios|vista-asientos', 'vista-asientos|vista-horarios',
+    'vista-asientos|vista-dulceria', 'vista-dulceria|vista-asientos',
+    'vista-dulceria|vista-pago', 'vista-pago|vista-dulceria',
+    'vista-pago|vista-ticket'
+]);
+
+async function cambiarVista(idDesde, idHacia) {
+    // FIX (bug reportado): algunos botones internos llamaban a cambiarVista() directamente
+    // (ej. "Volver a Cartelera" en Horarios, o el link "Socio Cinerama" del footer) sin pasar
+    // por intentarSalirDelFlujoDeCompra(), así que salían del flujo sin avisar y dejaban el
+    // temporizador/badge "vivo". Esta red de seguridad cubre cualquier botón, actual o futuro,
+    // que intente lo mismo. Si la salida ya pasó por el wrapper (que limpia el pedido antes de
+    // navegar), estadoPedidoTieneProgreso() ya da false aquí y no se pregunta dos veces.
+    const esFugaDelFlujoDeCompra = VISTAS_FLUJO_COMPRA.includes(idDesde)
+        && !TRANSICIONES_PERMITIDAS_EN_FLUJO_COMPRA.has(`${idDesde}|${idHacia}`);
+
+    if (esFugaDelFlujoDeCompra && estadoPedidoTieneProgreso()) {
+        const salir = await confirmarAccion({
+            titulo: '¿Salir de la compra?',
+            mensaje: 'Tienes una compra en curso. Si sales ahora, perderás los asientos y/o productos que seleccionaste.',
+            tipo: 'advertencia',
+            textoConfirmar: 'Sí, salir',
+            textoCancelar: 'Seguir comprando'
+        });
+        if (!salir) return;
+        limpiarEstadoPedido();
+    }
+
     const elDesde = document.getElementById(idDesde);
     const elHacia = document.getElementById(idHacia);
     if (!elDesde || !elHacia) return;
@@ -495,13 +528,19 @@ window.irAAsientos = () => {
 
     cambiarVista('vista-horarios', 'vista-asientos');
     iniciarTemporizadorCompra(); // Módulo 2: el temporizador de compra empieza aquí
+    iniciarRefrescoAsientosEnVivo(); // FIX: mantiene el mapa al día con bloqueos/ventas de otras pestañas
 };
 
 const renderizarGridAsientos = () => {
     const grid = document.getElementById('grid-asientos');
-    grid.innerHTML = '';
+    if (!grid) return;
     const sala = obtenerSalaConfigurada(estadoPedido.sala || 1);
-    const vendidas = obtenerButacasVendidasPorSala(estadoPedido.sala || 1);
+    // FIX: vendidas ahora se filtra por la función exacta (sala+fecha+hora), no por sala completa.
+    const vendidas = obtenerButacasVendidas(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora);
+    // FIX: butacas que OTRA pestaña/sesión ya apartó temporalmente para esta misma función.
+    const bloqueadasPorOtros = obtenerButacasBloqueadasPorOtros(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora);
+    // FIX: para que un refresco del grid (en vivo) no borre visualmente lo que el usuario ya eligió.
+    const idsSeleccionados = new Set((estadoPedido.asientos || []).map(s => s.id));
     grid.className = 'matriz-sala-cliente';
     grid.style.setProperty('--columnas-sala', sala.columnas);
     grid.innerHTML = sala.asientos.map(asiento => {
@@ -510,10 +549,40 @@ const renderizarGridAsientos = () => {
         if (asiento.estado === 'mantenimiento' || vendidas.has(asientoId)) {
             return `<button disabled title="${asientoId} — ${vendidas.has(asientoId) ? 'Ocupado' : 'En mantenimiento'}" class="seat asiento-cliente-no-disponible w-7 h-7 md:w-10 md:h-10 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-not-allowed">${asientoId}</button>`;
         }
+        if (bloqueadasPorOtros.has(asientoId)) {
+            return `<button disabled title="${asientoId} — Reservado temporalmente por otro cliente" class="seat asiento-cliente-no-disponible w-7 h-7 md:w-10 md:h-10 rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-not-allowed opacity-70">${asientoId}</button>`;
+        }
         const accesible = asiento.estado === 'accesible';
-        return `<button id="asiento-btn-${asientoId}" data-accesible="${accesible}" onclick="clickAsiento('${asientoId}')" title="${asientoId}${accesible ? ' — Espacio accesible' : ''}" class="seat w-7 h-7 md:w-10 md:h-10 ${accesible ? 'asiento-cliente-accesible' : 'bg-green-600 hover:bg-green-500'} rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-pointer flex justify-center items-end pb-1 text-[8px] md:text-[10px] font-bold text-white/70">${accesible ? '<i class="fa-solid fa-wheelchair text-xs md:text-sm m-auto"></i>' : asientoId}</button>`;
+        const seleccionado = idsSeleccionados.has(asientoId);
+        const clasesEstado = seleccionado ? 'selected' : (accesible ? 'asiento-cliente-accesible' : 'bg-green-600 hover:bg-green-500');
+        return `<button id="asiento-btn-${asientoId}" data-accesible="${accesible}" onclick="clickAsiento('${asientoId}')" title="${asientoId}${accesible ? ' — Espacio accesible' : ''}" class="seat w-7 h-7 md:w-10 md:h-10 ${clasesEstado} rounded-t-lg md:rounded-t-xl rounded-b-sm border-b-4 border-black/50 cursor-pointer flex justify-center items-end pb-1 text-[8px] md:text-[10px] font-bold text-white/70">${accesible ? '<i class="fa-solid fa-wheelchair text-xs md:text-sm m-auto"></i>' : asientoId}</button>`;
     }).join('');
 };
+
+/* ============================================================================
+   FIX — REFRESCO EN VIVO DEL MAPA DE ASIENTOS
+   ------------------------------------------------------------------------
+   Mientras el cliente está en vista-asientos, refresca el grid cada 10s para:
+   1) liberar visualmente bloqueos ya vencidos, y
+   2) reflejar butacas apartadas/vendidas por otra pestaña/sesión casi en vivo.
+   Se detiene solo en cuanto la vista deja de ser vista-asientos (self-cleaning),
+   así que no hace falta enganchar manualmente cada punto de salida posible.
+   ============================================================================ */
+function iniciarRefrescoAsientosEnVivo() {
+    detenerRefrescoAsientosEnVivo();
+    idIntervaloRefrescoAsientos = setInterval(() => {
+        if (vistaActualVisible !== 'vista-asientos') { detenerRefrescoAsientosEnVivo(); return; }
+        renderizarGridAsientos();
+    }, 10000);
+}
+function detenerRefrescoAsientosEnVivo() {
+    if (idIntervaloRefrescoAsientos) { clearInterval(idIntervaloRefrescoAsientos); idIntervaloRefrescoAsientos = null; }
+}
+// FIX: reactividad casi inmediata cuando OTRA pestaña del mismo navegador cambia bloqueos/ventas.
+window.addEventListener('storage', (evento) => {
+    if (vistaActualVisible !== 'vista-asientos') return;
+    if (evento.key === LS_BLOQUEOS_ASIENTOS || evento.key === LS_VENTAS_ASIENTOS) renderizarGridAsientos();
+});
 
 /* ============================================================================
    MÓDULO 2 — MOTOR DE TARIFAS DINÁMICAS
@@ -583,6 +652,7 @@ window.clickAsiento = (asientoId) => {
         btn.classList.remove('selected', 'bg-brand-red');
         if (btn.dataset.accesible === 'true') btn.classList.add('asiento-cliente-accesible');
         else btn.classList.add('bg-green-600');
+        liberarAsientoBloqueado(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId); // FIX bloqueo temporal
     } else {
         // Módulo 6: límite máximo de asientos por transacción.
         if (estadoPedido.asientos.length >= MAX_ASIENTOS_POR_COMPRA) {
@@ -598,6 +668,7 @@ window.clickAsiento = (asientoId) => {
         });
         btn.classList.remove('bg-green-600', 'hover:bg-green-500');
         btn.classList.add('selected');
+        bloquearAsientoTemporalmente(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId); // FIX bloqueo temporal
     }
     actualizarResumenAsientos();
 };
@@ -668,6 +739,7 @@ function iniciarTemporizadorCompra() {
 function reiniciarTemporizadorCompra() {
     if (!estadoPedido.pelicula && !estadoPedido.modoDirecto) return; // no hay compra en curso
     iniciarTemporizadorCompra();
+    renovarBloqueosDeSesion(); // FIX bloqueo temporal: la reserva de butacas dura lo mismo que el temporizador
 }
 
 function detenerTemporizadorCompra() {
@@ -725,6 +797,8 @@ async function manejarExpiracionTemporizadorCompra() {
 /** Limpia por completo el pedido en curso y detiene el temporizador. Reutilizable desde cualquier salida del flujo. */
 function limpiarEstadoPedido() {
     detenerTemporizadorCompra();
+    detenerRefrescoAsientosEnVivo(); // FIX: no seguir refrescando el grid fuera de vista-asientos
+    liberarTodosLosBloqueosDeSesion(); // FIX bloqueo temporal: suelta las butacas que esta sesión había apartado
     estadoPedido.pelicula = null;
     estadoPedido.fecha = null;
     estadoPedido.formato = null;
@@ -736,18 +810,22 @@ function limpiarEstadoPedido() {
     estadoPedido.cupon = null;
 }
 
+/** Módulo 6: hay "progreso" desde que se eligió película (Horarios en adelante), no solo con
+ *  asientos/carrito ya elegidos. Centralizada aquí para que la usen tanto
+ *  intentarSalirDelFlujoDeCompra() como la red de seguridad dentro de cambiarVista(). */
+function estadoPedidoTieneProgreso() {
+    return estadoPedido.pelicula !== null
+        || (estadoPedido.asientos && estadoPedido.asientos.length > 0)
+        || (estadoPedido.carrito && Object.keys(estadoPedido.carrito).length > 0);
+}
+
 /**
  * Envuelve una navegación que rompe el flujo de compra. Si no hay nada que
  * perder, navega directo; si hay asientos/dulces seleccionados, confirma antes.
  * @param {Function} accionNavegacion - función que ejecuta la navegación real.
  */
 async function intentarSalirDelFlujoDeCompra(accionNavegacion) {
-    // Módulo 6: hay "progreso" desde que se eligió película (Horarios en adelante), no solo con asientos/carrito ya elegidos.
-    const hayProgreso = estadoPedido.pelicula !== null
-        || (estadoPedido.asientos && estadoPedido.asientos.length > 0)
-        || (estadoPedido.carrito && Object.keys(estadoPedido.carrito).length > 0);
-
-    if (!hayProgreso) { accionNavegacion(); return; }
+    if (!estadoPedidoTieneProgreso()) { accionNavegacion(); return; }
 
     const salir = await confirmarAccion({
         titulo: '¿Salir de la compra?',
@@ -792,7 +870,12 @@ window.abrirDulceriaDirecta = () => {
     aplicarModoDirectoUI();
     cambiarVista(vistaActualVisible, 'vista-dulceria');
     mostrarToast('Carrito de dulcería reiniciado. ¡Arma tu pedido!', 'info');
-    iniciarTemporizadorCompra(); // Módulo 2: también es una compra en curso
+    // FIX: el temporizador YA NO arranca aquí. Si arrancaba al solo entrar (carrito vacío),
+    // y el usuario salía sin comprar nada, estadoPedidoTieneProgreso() daba false (no hay
+    // pelicula/asientos/carrito), así que ni intentarSalirDelFlujoDeCompra() ni la red de
+    // seguridad de cambiarVista() disparaban limpiarEstadoPedido() -> el temporizador y su
+    // badge quedaban corriendo de fondo aunque ya no hubiera nada que perder.
+    // Ahora arranca recién con el primer producto agregado, en actualizarCantidadSnack().
 };
 
 /** Muestra/oculta bloques relacionados a entradas según el modo actual. */
@@ -899,6 +982,7 @@ window.renderizarGridDulceria = (filtroCategoria) => {
 };
 
 window.actualizarCantidadSnack = (id, cambio) => {
+    const teniaProductosAntes = Object.keys(estadoPedido.carrito).length > 0;
     const actual = estadoPedido.carrito[id] || 0;
     const nuevoValor = actual + cambio;
     if (nuevoValor < 0) return;
@@ -907,6 +991,17 @@ window.actualizarCantidadSnack = (id, cambio) => {
         delete estadoPedido.carrito[id];
     } else {
         estadoPedido.carrito[id] = nuevoValor;
+    }
+
+    // FIX: solo aplica en modo directo (dulcería sin película). En el flujo normal el
+    // temporizador ya viene corriendo desde que se eligieron asientos, así que no se toca aquí.
+    if (estadoPedido.modoDirecto) {
+        const tieneProductosAhora = Object.keys(estadoPedido.carrito).length > 0;
+        if (!teniaProductosAntes && tieneProductosAhora) {
+            iniciarTemporizadorCompra(); // se agregó el primer producto: recién ahora hay algo que perder
+        } else if (teniaProductosAntes && !tieneProductosAhora) {
+            detenerTemporizadorCompra(); // se quitó el último producto: ya no hay nada que perder
+        }
     }
 
     const spanCantidad = document.getElementById(`cant-${id}`);
@@ -1265,14 +1360,19 @@ function finalizarProcesamientoPago() {
         numeroDoc
     });
 
-    // FASE 10: registra las butacas como vendidas en su sala real, para que Mantenimiento no pueda tocarlas
+    // FASE 10 (FIX): registra las butacas como vendidas en su sala Y función exactas (fecha+hora),
+    // para que Mantenimiento no pueda tocarlas y para no bloquear la misma butaca en otro horario.
     if (!estadoPedido.modoDirecto && estadoPedido.pelicula && estadoPedido.asientos.length > 0) {
-        registrarVentaAsientos(estadoPedido.sala || 1, estadoPedido.asientos.map(s => s.id));
+        registrarVentaAsientos(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, estadoPedido.asientos.map(s => s.id));
     }
 
     mostrarToast('¡Pago procesado con éxito! Aquí está tu ticket.', 'exito');
-    detenerTemporizadorCompra(); // Módulo 2: la compra se completó, ya no aplica
     cambiarVista('vista-pago', 'vista-ticket');
+    // FIX: se limpia el pedido un instante después de la transición de vista (no antes), para que
+    // el stepper de la vista de ticket siga mostrando correctamente el recorrido (normal o
+    // "dulcería directa"). Esto evita arrastrar asientos/dulces ya pagados a la siguiente compra
+    // y libera cualquier bloqueo temporal de butacas que esta sesión tuviera reservado.
+    setTimeout(() => limpiarEstadoPedido(), 350);
 };
 
 window.descargarPDF = (idElemento, nombreArchivo) => {
@@ -1491,7 +1591,13 @@ window.toggleMenuMovil = (forzarEstado = null) => {
 
 /** Guarda un ticket de compra dentro del arreglo `compras` del usuario logueado. */
 function guardarCompraEnHistorial(compra) {
-    if (!usuarioActual) return; // Los invitados no tienen historial persistente
+    // FIX: antes, si no había sesión, la función cortaba aquí y la compra de invitado se
+    // perdía para siempre (no aparecía en ningún lado, ni en los reportes del admin). Ahora
+    // TODA compra queda en el libro de ventas general; el bloque de abajo sigue siendo
+    // exclusivo para el historial personal ("Mis compras"), que solo aplica con sesión.
+    registrarVentaGeneral({ ...compra, correoUsuario: usuarioActual ? usuarioActual.correo : null });
+
+    if (!usuarioActual) return; // Los invitados no tienen historial personal, pero la venta ya quedó registrada arriba
 
     let usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
     const indice = usuarios.findIndex(u => u.correo === usuarioActual.correo);

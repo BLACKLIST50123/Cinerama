@@ -151,6 +151,46 @@ window.alternarOrigenImagenAdmin = (prefijo) => {
     if (campoArchivo) campoArchivo.classList.toggle('hidden', !esArchivo);
 };
 
+/* ============================================================================
+   NUEVO — CAMPO SEPARADO DE BANNER (además del póster) EN CARTELERA
+   ------------------------------------------------------------------------
+   pelicula.poster (vertical) y pelicula.banner (horizontal promocional) ya
+   existían como campos separados en los datos, pero el formulario del admin
+   solo pedía UNA imagen y la duplicaba en ambos. Estas funciones son el
+   equivalente exacto de obtenerImagenDesdeFormulario/alternarOrigenImagenAdmin
+   pero para el banner, con su propio grupo de radios y sus propios campos
+   (…-banner-url / …-banner-archivo / …-banner-preview), sin tocar los del
+   póster. El banner es OPCIONAL: si se deja vacío, se sigue usando el póster
+   como banner (mismo comportamiento de antes), para no exigir un paso extra.
+   ============================================================================ */
+
+/** Igual que obtenerImagenDesdeFormulario(), pero para el campo de banner. */
+async function obtenerImagenBannerDesdeFormulario(prefijo) {
+    const prefijoReal = prefijoCampoImagenAdmin(prefijo);
+    const origenSeleccionado = document.querySelector(`input[name="${prefijoReal}-banner-origen-img"]:checked`);
+    const esArchivo = origenSeleccionado && origenSeleccionado.value === 'archivo';
+
+    if (esArchivo) {
+        const inputArchivo = document.getElementById(`${prefijoReal}-banner-archivo`);
+        const archivo = inputArchivo && inputArchivo.files && inputArchivo.files[0];
+        if (archivo) return await convertirArchivoABase64(archivo);
+        return '';
+    }
+    const inputUrl = document.getElementById(`${prefijoReal}-banner-url`);
+    return inputUrl ? inputUrl.value.trim() : '';
+}
+
+/** Igual que alternarOrigenImagenAdmin(), pero para el campo de banner. */
+window.alternarOrigenImagenBannerAdmin = (prefijo) => {
+    const prefijoReal = prefijoCampoImagenAdmin(prefijo);
+    const seleccionado = document.querySelector(`input[name="${prefijoReal}-banner-origen-img"]:checked`);
+    const esArchivo = seleccionado && seleccionado.value === 'archivo';
+    const campoUrl = document.getElementById(`${prefijoReal}-banner-url`);
+    const campoArchivo = document.getElementById(`${prefijoReal}-banner-archivo`);
+    if (campoUrl) campoUrl.classList.toggle('hidden', esArchivo);
+    if (campoArchivo) campoArchivo.classList.toggle('hidden', !esArchivo);
+};
+
 
 
 
@@ -701,13 +741,14 @@ window.crearPeliculaAdmin = async (e) => {
         mostrarToast('Ingresa una URL de imagen o carga un archivo para el póster.', 'error');
         return;
     }
+    const imagenBanner = await obtenerImagenBannerDesdeFormulario('pelicula'); // NUEVO: banner independiente (opcional)
 
     const id = 'peli_' + Date.now();
     const datosBase = {
         id, titulo: titulo.value.trim(), genero: genero.value.trim(), duracion: duracion.value.trim(),
         clasificacion: edad.value,
         poster: imagen,
-        banner: imagen,
+        banner: imagenBanner || imagen, // si no se cargó un banner propio, se sigue usando el póster (comportamiento anterior)
         sinopsis: sinopsis.value.trim() || 'Sinopsis pendiente de configurar.',
         trailer: trailer.value.trim() || '#'
     };
@@ -728,10 +769,13 @@ window.crearPeliculaAdmin = async (e) => {
     e.target.reset();
     document.getElementById('admin-pelicula-poster-url').classList.remove('hidden');
     document.getElementById('admin-pelicula-poster-archivo').classList.add('hidden');
+    document.getElementById('admin-pelicula-banner-url').classList.remove('hidden'); // NUEVO: reset del campo de banner
+    document.getElementById('admin-pelicula-banner-archivo').classList.add('hidden');
     renderizarSelectorChipsMultiple('admin-pelicula-genero-chips', 'admin-pelicula-genero', GENEROS_DISPONIBLES, ''); // Módulo 3: limpia los chips tras guardar
     funcionesBorradorNuevaPelicula = [];
     actualizarTipoPeliculaAdmin();
     actualizarPreviewImagenAdmin('admin-pelicula-preview', ''); // FASE 8: limpia la vista previa tras guardar
+    actualizarPreviewImagenAdmin('admin-pelicula-banner-preview', ''); // NUEVO: limpia la vista previa del banner
     mostrarToast(esEstreno ? 'Estreno agregado correctamente.' : 'Película y funciones agregadas a la cartelera.', 'exito');
 };
 
@@ -749,6 +793,7 @@ window.abrirModalEditarPelicula = (id, origen) => {
     document.getElementById('edit-pelicula-sinopsis').value = pelicula.sinopsis || '';
     document.getElementById('edit-pelicula-trailer').value = pelicula.trailer || '';
     document.getElementById('edit-pelicula-poster-url').value = pelicula.poster || '';
+    document.getElementById('edit-pelicula-banner-url').value = pelicula.banner || ''; // NUEVO
     document.getElementById('edit-pelicula-es-estreno').checked = origen === 'estreno';
     renderizarSelectorChipsMultiple('edit-pelicula-genero-chips', 'edit-pelicula-genero', GENEROS_DISPONIBLES, pelicula.genero || ''); // Módulo 3
     actualizarLanzamientoVisibleEdicion(); // Módulo 3: oculta "lanzamiento" si es Próximo Estreno
@@ -758,6 +803,12 @@ window.abrirModalEditarPelicula = (id, origen) => {
     if (radioUrl) radioUrl.checked = true;
     alternarOrigenImagenAdmin('edit-pelicula');
     actualizarPreviewImagenAdmin('edit-pelicula-preview', pelicula.poster || ''); // FASE 8: preview del póster actual
+
+    // NUEVO: mismo restablecimiento, pero para el selector de banner
+    const radioUrlBanner = document.querySelector('input[name="edit-pelicula-banner-origen-img"][value="url"]');
+    if (radioUrlBanner) radioUrlBanner.checked = true;
+    alternarOrigenImagenBannerAdmin('edit-pelicula');
+    actualizarPreviewImagenAdmin('edit-pelicula-banner-preview', pelicula.banner || '');
 
     // FASE 12: "Editar Horarios" solo aplica a películas de Cartelera (los estrenos aún no tienen horarios)
     document.getElementById('btn-editar-horarios-desde-edicion').classList.toggle('hidden', origen !== 'cartelera');
@@ -791,6 +842,7 @@ window.guardarEdicionPeliculaAdmin = async (e) => {
     if (!valido) return;
 
     const imagenNueva = await obtenerImagenDesdeFormulario('edit-pelicula');
+    const imagenBannerNueva = await obtenerImagenBannerDesdeFormulario('edit-pelicula'); // NUEVO
     const peliculaOriginal = origenOriginal === 'estreno' ? baseDatosEstrenos[id] : baseDatosPeliculas[id];
     if (!peliculaOriginal) { cerrarModalEditarPelicula(); return; }
 
@@ -805,7 +857,7 @@ window.guardarEdicionPeliculaAdmin = async (e) => {
         sinopsis: document.getElementById('edit-pelicula-sinopsis').value.trim(),
         trailer: document.getElementById('edit-pelicula-trailer').value.trim() || '#',
         poster: imagenNueva || peliculaOriginal.poster,
-        banner: imagenNueva || peliculaOriginal.banner
+        banner: imagenBannerNueva || peliculaOriginal.banner // NUEVO: ya no depende del póster
     };
     if (!esEstrenoAhora) datosActualizados.tipoLanzamiento = document.getElementById('edit-pelicula-lanzamiento').value; // Módulo 3
 
@@ -925,13 +977,13 @@ function renderizarListaCategoriasDulceria() {
     const contenedor = document.getElementById('admin-lista-categorias-dulceria');
     if (!contenedor) return;
     if (categoriasDulceria.length === 0) {
-        contenedor.innerHTML = '<p class="text-gray-500 text-sm italic col-span-full">Aún no hay categorías. Crea la primera arriba.</p>';
+        contenedor.innerHTML = '<p class="text-gray-500 text-sm italic flex-shrink-0">Aún no hay categorías. Crea la primera arriba.</p>';
         return;
     }
     contenedor.innerHTML = categoriasDulceria.map(cat => {
         const cantidad = contarProductosPorCategoria(cat.id);
         return `
-            <div class="flex items-center justify-between bg-dark-900 border border-white/5 rounded-xl p-3 gap-2">
+            <div class="flex items-center justify-between bg-dark-900 border border-white/5 rounded-xl p-3 gap-2 min-w-0">
                 <div class="min-w-0">
                     <p class="text-white font-bold text-sm truncate">${cat.nombre}</p>
                     <p class="text-gray-500 text-xs">${cantidad} producto${cantidad === 1 ? '' : 's'}</p>
@@ -940,6 +992,14 @@ function renderizarListaCategoriasDulceria() {
             </div>`;
     }).join('');
 }
+
+window.actualizarCategoriasDulceriaAdmin = () => {
+    poblarSelectsCategoriaDulceria();
+    renderizarListaCategoriasDulceria();
+    renderizarAdminDulceria();
+    if (typeof renderizarGridDulceria === 'function') renderizarGridDulceria('all');
+    mostrarToast('Categorías actualizadas.', 'info');
+};
 
 window.crearCategoriaDulceriaAdmin = (e) => {
     e.preventDefault();
@@ -963,6 +1023,7 @@ window.crearCategoriaDulceriaAdmin = (e) => {
 
     renderizarListaCategoriasDulceria();
     renderizarAdminDulceria();
+    if (typeof renderizarGridDulceria === 'function') renderizarGridDulceria('all');
     e.target.reset();
     limpiarCampoInvalido(input);
     mostrarToast(`Categoría "${nombre}" creada correctamente.`, 'exito');
@@ -999,6 +1060,7 @@ window.eliminarCategoriaDulceriaAdmin = async (id) => {
 
     renderizarListaCategoriasDulceria();
     renderizarAdminDulceria();
+    if (typeof renderizarGridDulceria === 'function') renderizarGridDulceria('all');
     mostrarToast(cantidad > 0
         ? `Categoría eliminada. ${cantidad} producto${cantidad === 1 ? '' : 's'} pasó${cantidad === 1 ? '' : 'aron'} a "Sin categoría".`
         : 'Categoría eliminada correctamente.', 'info');
@@ -1195,7 +1257,7 @@ function renderizarAdminSalas() {
     document.getElementById('admin-sala-columnas').value = sala.columnas;
     const grid = document.getElementById('admin-grid-salas');
     grid.style.setProperty('--columnas-sala', sala.columnas);
-    const vendidas = obtenerButacasVendidasPorSala(salaMantenimientoActual); // Módulo 4: solo informativo, ya no bloquea
+    const vendidas = obtenerButacasVendidasTotalPorSala(salaMantenimientoActual); // Módulo 4: solo informativo, ya no bloquea (FIX: ver utilidades.js)
     grid.innerHTML = sala.asientos.map(asiento => {
         const id = `${asiento.f}${asiento.c}`;
         const esVendida = vendidas.has(id);
@@ -1454,19 +1516,20 @@ window.crearCuponAdmin = (e) => {
 
 // --- 15.5 Dashboard: métricas simples ---
 function renderizarAdminDashboard() {
-    const usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
+    // FIX: antes solo sumaba usuarios[].compras, así que las compras de invitados (sin sesión)
+    // no se contaban en el dashboard. obtenerVentasGenerales() incluye ambas, y migra sola los
+    // datos antiguos la primera vez que se llama (ver utilidades.js) para no "perder" ventas.
+    const ventas = obtenerVentasGenerales();
     let totalTickets = 0;
     let totalDulces = 0;
     let totalVentas = 0;
     let totalCompras = 0;
 
-    usuarios.forEach(u => {
-        (u.compras || []).forEach(compra => {
-            totalCompras++;
-            totalTickets += (compra.asientos || []).length;
-            totalDulces += (compra.dulces || []).length;
-            totalVentas += compra.total || 0;
-        });
+    ventas.forEach(compra => {
+        totalCompras++;
+        totalTickets += (compra.asientos || []).length;
+        totalDulces += (compra.dulces || []).length;
+        totalVentas += compra.total || 0;
     });
 
     document.getElementById('admin-dash-ventas').textContent = formatearMoneda(totalVentas);

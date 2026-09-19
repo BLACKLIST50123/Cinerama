@@ -127,7 +127,7 @@
             </div>
         </div>
     </aside>
-
+    
     <!-- ============================================================
          CONTENEDOR DE VISTAS — Módulo 1: envuelve todas las vistas
          cliente/admin para que el footer se posicione estáticamente al
@@ -153,7 +153,7 @@
             <!-- Que quieres ver -->
             <div class="flex flex-col md:flex-row justify-between items-end md:items-center mb-10 gap-6">
                 <div>
-                    <h2 class="text-3xl md:text-4xl font-bold mb-2">Qué quieres ver</h2>
+                    <h2 class="text-3xl md:text-4xl font-bold mb-2">Peliculas En Cartelera</h2>
                     <div class="h-1 w-20 bg-brand-red rounded-full"></div>
                 </div>
             </div>
@@ -763,6 +763,20 @@
                                             <option value="+18">+18</option>
                                         </select>
                                     </div>
+                                    <!-- Tipo de película: el switch reemplaza al checkbox anterior. -->
+                                    <div class="bg-dark-900 border border-white/10 rounded-xl p-4">
+                                        <div class="flex items-center justify-between gap-4">
+                                            <div>
+                                                <p class="text-white text-sm font-bold">Tipo de película</p>
+                                                <p id="admin-pelicula-tipo-mensaje" class="text-gray-400 text-xs mt-1">EN CARTELERA: Debes crear al menos una función.</p>
+                                            </div>
+                                            <label class="toggle-tipo-pelicula" title="Cambiar entre cartelera y próximo estreno">
+                                                <input type="checkbox" id="admin-pelicula-es-estreno" role="switch" aria-describedby="admin-pelicula-tipo-mensaje" onchange="actualizarTipoPeliculaAdmin()">
+                                                <span class="toggle-tipo-pelicula-control" aria-hidden="true"></span>
+                                                <span class="sr-only">Marcar como próximo estreno</span>
+                                            </label>
+                                        </div>
+                                    </div>
                                     <div id="admin-pelicula-lanzamiento-contenedor">
                                         <label class="text-[11px] text-gray-500 mb-1 block">Tipo de lanzamiento</label>
                                         <select id="admin-pelicula-lanzamiento" class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
@@ -789,21 +803,24 @@
                                             <input type="file" id="admin-pelicula-poster-archivo" accept="image/*" onchange="actualizarPreviewImagenArchivo('admin-pelicula-poster-archivo', 'admin-pelicula-preview')" class="hidden w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-brand-red file:text-white file:font-bold file:text-xs">
                                         </div>
                                     </div>
+                                    <p class="text-gray-500 text-[10px] mt-1.5">Vertical: se usa en el afiche, en las tarjetas de cartelera y como banner si no cargas uno propio abajo.</p>
                                 </div>
 
-                                <!-- Tipo de película: el switch reemplaza al checkbox anterior. -->
-                                <div class="bg-dark-900 border border-white/10 rounded-xl p-4">
-                                    <div class="flex items-center justify-between gap-4">
-                                        <div>
-                                            <p class="text-white text-sm font-bold">Tipo de película</p>
-                                            <p id="admin-pelicula-tipo-mensaje" class="text-gray-400 text-xs mt-1">EN CARTELERA: Debes crear al menos una función.</p>
-                                        </div>
-                                        <label class="toggle-tipo-pelicula" title="Cambiar entre cartelera y próximo estreno">
-                                            <input type="checkbox" id="admin-pelicula-es-estreno" role="switch" aria-describedby="admin-pelicula-tipo-mensaje" onchange="actualizarTipoPeliculaAdmin()">
-                                            <span class="toggle-tipo-pelicula-control" aria-hidden="true"></span>
-                                            <span class="sr-only">Marcar como próximo estreno</span>
-                                        </label>
+                                <!-- NUEVO: Banner horizontal promocional, independiente del póster -->
+                                <div class="bg-dark-900 border border-white/10 rounded-xl p-3">
+                                    <p class="text-gray-400 text-xs font-bold uppercase mb-2 flex items-center gap-1.5"><i class="fa-solid fa-panorama text-brand-red"></i> Banner (opcional)</p>
+                                    <div class="flex gap-4 mb-2 text-xs text-gray-300">
+                                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="admin-pelicula-banner-origen-img" value="url" checked class="accent-brand-red" onchange="alternarOrigenImagenBannerAdmin('pelicula')"> URL</label>
+                                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="admin-pelicula-banner-origen-img" value="archivo" class="accent-brand-red" onchange="alternarOrigenImagenBannerAdmin('pelicula')"> Cargar archivo</label>
                                     </div>
+                                    <div class="flex gap-3 items-start">
+                                        <img id="admin-pelicula-banner-preview" class="preview-imagen-admin hidden" alt="Vista previa del banner">
+                                        <div class="flex-grow min-w-0">
+                                            <input type="text" id="admin-pelicula-banner-url" oninput="actualizarPreviewImagenAdmin('admin-pelicula-banner-preview', this.value)" placeholder="https://..." class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
+                                            <input type="file" id="admin-pelicula-banner-archivo" accept="image/*" onchange="actualizarPreviewImagenArchivo('admin-pelicula-banner-archivo', 'admin-pelicula-banner-preview')" class="hidden w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-brand-red file:text-white file:font-bold file:text-xs">
+                                        </div>
+                                    </div>
+                                    <p class="text-gray-500 text-[10px] mt-1.5">Horizontal: se usa en el carrusel de Inicio y en la cabecera del detalle. Si lo dejas vacío, se usa el póster.</p>
                                 </div>
 
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -879,7 +896,7 @@
                                 <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
                                 <input type="text" id="admin-buscar-dulceria" oninput="renderizarAdminDulceria()" placeholder="Buscar producto..." class="w-full bg-dark-900 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-brand-yellow">
                             </div>
-                            <div id="admin-filtros-dulceria" class="flex gap-2 overflow-x-auto hide-scrollbar mb-4 border-b border-white/10 pb-2">
+                            <div id="admin-filtros-dulceria" class="flex gap-2 overflow-x-auto scrollbar-visible mb-4 border-b border-white/10 pb-2">
                                 <!-- Módulo 6: botones inyectados dinámicamente vía JS (renderizarFiltrosAdminDulceria(), en admin.js), según categoriasDulceria -->
                             </div>
                             <div id="admin-lista-dulceria" class="space-y-2 max-h-[28rem] overflow-y-auto hide-scrollbar"></div>
@@ -893,12 +910,15 @@
                                 <h3 class="text-lg font-bold text-white">Categorías de Dulcería</h3>
                                 <p class="text-gray-500 text-xs mt-1">Estas categorías alimentan el selector del formulario de productos y los filtros que ven tus clientes.</p>
                             </div>
+                            <button type="button" onclick="actualizarCategoriasDulceriaAdmin()" class="w-9 h-9 rounded-lg bg-dark-900 border border-white/10 text-gray-400 hover:text-brand-yellow hover:border-brand-yellow/50 transition-colors flex items-center justify-center" title="Actualizar categorías" aria-label="Actualizar categorías">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
                         </div>
                         <form onsubmit="crearCategoriaDulceriaAdmin(event)" class="flex flex-col sm:flex-row gap-3 mb-5">
                             <input type="text" id="admin-nueva-categoria-nombre" placeholder="Nombre de la nueva categoría (ej: Helados)" class="flex-grow bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-brand-yellow">
                             <button type="submit" class="bg-brand-yellow hover:bg-yellow-400 text-black px-6 py-2.5 rounded-xl font-bold text-sm transition-colors whitespace-nowrap"><i class="fa-solid fa-plus mr-1"></i> Crear Categoría</button>
                         </form>
-                        <div id="admin-lista-categorias-dulceria" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div id="admin-lista-categorias-dulceria" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             <!-- Inyectado vía JS -->
                         </div>
                     </div>
@@ -908,7 +928,7 @@
                 <div id="tab-panel-salas" class="admin-tab-panel hidden">
                     <h2 class="text-2xl font-bold text-white mb-2">Mantenimiento de Salas</h2>
                     <p class="text-gray-400 text-sm mb-4">Diseña la estructura de cada sala y luego administra el estado operativo de sus butacas.</p>
-                    <div class="bg-brand-yellow/10 border border-brand-yellow/30 rounded-xl px-4 py-3 mb-6 flex items-start gap-3 max-w-xl">
+                    <div class="w-full bg-brand-yellow/10 border border-brand-yellow/30 rounded-xl px-4 py-3 mb-6 flex items-start gap-3">
                         <i class="fa-solid fa-triangle-exclamation text-brand-yellow mt-0.5"></i>
                         <p class="text-brand-yellow text-xs leading-relaxed">
                             Puedes editar la distribución y el estado de <b>cualquier butaca, incluidas las ya vendidas</b> (se marcan solo como referencia, no bloquean la edición).
@@ -1041,9 +1061,9 @@
     </div>
 
     <!-- ============================================================
-         FASE 7: MODAL DE EDICIÓN DE PELÍCULA (Panel Admin)
-         ============================================================ -->
-    <div id="modal-editar-pelicula" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+        FASE 7: MODAL DE EDICIÓN DE PELÍCULA (Panel Admin)
+        ============================================================ -->
+    <div id="modal-editar-pelicula" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto hide-scrollbar" id="editar-pelicula-contenido">
             <button onclick="cerrarModalEditarPelicula()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6">Editar Película</h3>
@@ -1091,6 +1111,23 @@
                     </div>
                 </div>
 
+                <!-- NUEVO: Banner horizontal promocional, independiente del póster -->
+                <div class="bg-dark-900 border border-white/10 rounded-xl p-3">
+                    <p class="text-gray-400 text-xs font-bold uppercase mb-2">Banner (opcional)</p>
+                    <div class="flex gap-4 mb-2 text-xs text-gray-300">
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="edit-pelicula-banner-origen-img" value="url" checked class="accent-brand-red" onchange="alternarOrigenImagenBannerAdmin('edit-pelicula')"> URL</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="edit-pelicula-banner-origen-img" value="archivo" class="accent-brand-red" onchange="alternarOrigenImagenBannerAdmin('edit-pelicula')"> Cargar archivo</label>
+                    </div>
+                    <div class="flex gap-3 items-start">
+                        <img id="edit-pelicula-banner-preview" class="preview-imagen-admin hidden" alt="Vista previa del banner">
+                        <div class="flex-grow min-w-0">
+                            <input type="text" id="edit-pelicula-banner-url" oninput="actualizarPreviewImagenAdmin('edit-pelicula-banner-preview', this.value)" placeholder="https://..." class="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-red">
+                            <input type="file" id="edit-pelicula-banner-archivo" accept="image/*" onchange="actualizarPreviewImagenArchivo('edit-pelicula-banner-archivo', 'edit-pelicula-banner-preview')" class="hidden w-full text-xs text-gray-300 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-brand-red file:text-white file:font-bold file:text-xs">
+                        </div>
+                    </div>
+                    <p class="text-gray-500 text-[10px] mt-1.5">Si lo dejas vacío, se sigue usando el póster como banner.</p>
+                </div>
+
                 <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                     <input type="checkbox" id="edit-pelicula-es-estreno" class="accent-brand-yellow w-4 h-4" onchange="actualizarLanzamientoVisibleEdicion()">
                     Es "Próximo Estreno" (no aparece en Cartelera con horarios)
@@ -1109,7 +1146,7 @@
     <!-- ============================================================
          MÓDULO 4: MODAL DE EDICIÓN DE DÍA (Calendario de Feriados)
          ============================================================ -->
-    <div id="modal-editar-feriado" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-editar-feriado" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-6 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full transform scale-95 transition-transform duration-200" id="editar-feriado-contenido">
             <h3 class="text-xl font-bold text-white mb-1">Editar día</h3>
             <p id="feriado-fecha-legible" class="text-gray-400 text-sm mb-4"></p>
@@ -1138,7 +1175,7 @@
     <!-- ============================================================
          FASE 11: MODAL DE EDICIÓN DE PRODUCTO DE DULCERÍA (Panel Admin)
          ============================================================ -->
-    <div id="modal-editar-dulce" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-editar-dulce" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto hide-scrollbar" id="editar-dulce-contenido">
             <button onclick="cerrarModalEditarDulce()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6">Editar Producto</h3>
@@ -1176,7 +1213,7 @@
          FASE 12: MODAL DE GESTIÓN DE HORARIOS POR PELÍCULA
          (fechas + formato + hora + sala, sin choques de sala/fecha/hora)
          ============================================================ -->
-    <div id="modal-horarios-pelicula" class="hidden fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-horarios-pelicula" class="hidden fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-2xl w-full relative transform scale-95 transition-transform duration-200 max-h-[92vh] overflow-y-auto hide-scrollbar" id="horarios-pelicula-contenido">
             <button onclick="cerrarModalHorarios()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-1 flex items-center gap-2"><i class="fa-solid fa-calendar-days text-brand-yellow"></i> Gestionar Horarios</h3>
@@ -1264,7 +1301,7 @@
     <!-- ============================================================
          MODAL: LOGIN
          ============================================================ -->
-    <div id="modal-login" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
+    <div id="modal-login" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 relative transform scale-95 transition-transform duration-200" id="login-contenido">
             <button onclick="cerrarModalesAuth()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6 text-center">Iniciar Sesión</h3>
@@ -1287,7 +1324,7 @@
     <!-- ============================================================
          MODAL: REGISTRO
          ============================================================ -->
-    <div id="modal-registro" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
+    <div id="modal-registro" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 relative transform scale-95 transition-transform duration-200" id="registro-contenido">
             <button onclick="cerrarModalesAuth()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <h3 class="text-2xl font-bold text-white mb-6 text-center">Crea tu Cuenta</h3>
@@ -1316,7 +1353,7 @@
     <!-- ============================================================
          FASE 1: MODAL DE PERFIL
          ============================================================ -->
-    <div id="modal-perfil" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
+    <div id="modal-perfil" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full mx-4 relative transform scale-95 transition-transform duration-200" id="perfil-contenido">
             <button onclick="cerrarModalPerfil()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <div class="text-center mb-6">
@@ -1395,7 +1432,7 @@
     <!-- ============================================================
          FASE 9: MODAL DE TRÁILER (reutilizable desde Detalle y Horarios)
          ============================================================ -->
-    <div id="modal-trailer" class="hidden fixed inset-0 z-[85] bg-black/90 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-trailer" class="hidden fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="max-w-3xl w-full relative transform scale-95 transition-transform duration-200" id="trailer-contenido">
             <button onclick="cerrarModalTrailer()" class="absolute -top-10 right-0 text-white/70 hover:text-white"><i class="fa-solid fa-xmark text-2xl"></i></button>
             <h3 id="trailer-titulo" class="text-white font-bold text-lg mb-3"></h3>
@@ -1409,7 +1446,7 @@
     <!-- ============================================================
          FASE 7: MODAL INFORMATIVO GENÉRICO (enlaces del footer)
          ============================================================ -->
-    <div id="modal-legal" class="hidden fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+    <div id="modal-legal" class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
         <div class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[85vh] overflow-y-auto hide-scrollbar" id="legal-contenido">
             <button onclick="cerrarModalLegal()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
             <div id="legal-icono" class="w-14 h-14 rounded-full bg-brand-red/10 border border-brand-red/30 flex items-center justify-center mb-4"><i class="fa-solid fa-file-lines text-2xl text-brand-red"></i></div>

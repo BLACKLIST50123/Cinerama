@@ -24,7 +24,7 @@ function crearModalConfirmacionSiNoExiste() {
 
     const div = document.createElement('div');
     div.id = 'modal-confirmacion-global';
-    div.className = 'hidden fixed inset-0 z-[95] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4';
+    div.className = 'hidden fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4';
     div.innerHTML = `
         <div class="bg-dark-800 p-6 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full transform scale-95 transition-transform duration-200" id="confirmacion-global-contenido">
             <div id="confirmacion-global-icono-wrap" class="w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto">

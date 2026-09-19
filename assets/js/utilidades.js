@@ -198,18 +198,152 @@ function estaButacaBloqueada(id, sala = 1) {
     return asiento && asiento.estado === 'mantenimiento';
 }
 
-function registrarVentaAsientos(sala, idsAsientos) {
+/**
+ * FIX: antes solo recibía (sala, idsAsientos) y marcaba las butacas como vendidas para
+ * SIEMPRE en esa sala, sin importar el horario. Ahora exige también la función exacta
+ * (fechaFuncion/horaFuncion, tal como están en estadoPedido.fecha/estadoPedido.hora) para
+ * que la venta quede asociada a ESA función y no bloquee la misma butaca en otro horario.
+ */
+function registrarVentaAsientos(sala, fechaFuncion, horaFuncion, idsAsientos) {
     if (!sala || !idsAsientos || idsAsientos.length === 0) return;
     const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
-    ventas.push({ sala: Number(sala), asientos: idsAsientos, fecha: new Date().toISOString() });
+    ventas.push({
+        sala: Number(sala),
+        fechaFuncion: fechaFuncion || null,
+        horaFuncion: horaFuncion || null,
+        asientos: idsAsientos,
+        registradoEn: new Date().toISOString()
+    });
     guardarEnLocalStorageSeguro(LS_VENTAS_ASIENTOS, ventas);
 }
 
-function obtenerButacasVendidasPorSala(sala) {
+/**
+ * FIX: butacas vendidas para UNA función específica (sala+fecha+hora). Esta es la que debe
+ * usarse para pintar el mapa de asientos del cliente antes de comprar.
+ * Compatibilidad: los registros guardados ANTES de este fix no tienen fechaFuncion/horaFuncion
+ * (son `undefined`); esos se siguen tratando como "vendido en toda la sala" para no perder el
+ * bloqueo de butacas que ya se habían facturado antes de esta corrección.
+ */
+function obtenerButacasVendidas(sala, fechaFuncion, horaFuncion) {
+    const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
+    const vendidas = new Set();
+    ventas
+        .filter(v => Number(v.sala) === Number(sala))
+        .filter(v => (v.fechaFuncion === undefined && v.horaFuncion === undefined)
+            || (v.fechaFuncion === fechaFuncion && v.horaFuncion === horaFuncion))
+        .forEach(v => v.asientos.forEach(id => vendidas.add(id)));
+    return vendidas;
+}
+
+/** Total histórico de butacas vendidas en una sala, sin importar la función. Uso puramente
+ *  informativo (badge del panel admin > Salas > Mantenimiento; nunca bloquea la venta real). */
+function obtenerButacasVendidasTotalPorSala(sala) {
     const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
     const vendidas = new Set();
     ventas.filter(v => Number(v.sala) === Number(sala)).forEach(v => v.asientos.forEach(id => vendidas.add(id)));
     return vendidas;
+}
+
+/* ============================================================================
+   FIX — BLOQUEO TEMPORAL REAL DE BUTACAS (Módulo 2 lo declaraba pero nunca lo usaba)
+   ------------------------------------------------------------------------
+   localStorage se comparte entre TODAS las pestañas del mismo navegador (no entre
+   navegadores/dispositivos distintos — eso ya requiere backend real), así que esto alcanza
+   para el caso que reportaste: dos pestañas/usuarios del mismo equipo viendo la misma función.
+   Cada pestaña tiene su propio "idSesion" (guardado en sessionStorage, que NO se comparte
+   entre pestañas), y cada butaca elegida se registra con una fecha de expiración igual a la
+   del temporizador de compra. Al expirar, se libera sola (limpieza perezosa al leer).
+   ============================================================================ */
+
+/** Id de sesión de compra, único por pestaña (persiste mientras la pestaña siga abierta). */
+function obtenerIdSesionCompra() {
+    let id = sessionStorage.getItem('cinerama_id_sesion_compra');
+    if (!id) {
+        id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `sesion-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        sessionStorage.setItem('cinerama_id_sesion_compra', id);
+    }
+    return id;
+}
+
+/** Lee los bloqueos y de paso descarta (persistiendo) los que ya expiraron. */
+function obtenerBloqueosVigentes() {
+    const todos = JSON.parse(localStorage.getItem(LS_BLOQUEOS_ASIENTOS)) || [];
+    const ahora = Date.now();
+    const vigentes = todos.filter(b => new Date(b.expiracion).getTime() > ahora);
+    if (vigentes.length !== todos.length) guardarEnLocalStorageSeguro(LS_BLOQUEOS_ASIENTOS, vigentes);
+    return vigentes;
+}
+
+/** Butacas bloqueadas por OTRAS sesiones/pestañas para una función (no incluye las mías). */
+function obtenerButacasBloqueadasPorOtros(sala, fechaFuncion, horaFuncion) {
+    const idSesion = obtenerIdSesionCompra();
+    const vendidas = new Set();
+    obtenerBloqueosVigentes()
+        .filter(b => Number(b.sala) === Number(sala) && b.fechaFuncion === fechaFuncion && b.horaFuncion === horaFuncion && b.idSesion !== idSesion)
+        .forEach(b => vendidas.add(b.asientoId));
+    return vendidas;
+}
+
+/** Aparta temporalmente una butaca para esta función a nombre de esta sesión/pestaña. */
+function bloquearAsientoTemporalmente(sala, fechaFuncion, horaFuncion, asientoId) {
+    const idSesion = obtenerIdSesionCompra();
+    const expiracion = new Date(Date.now() + DURACION_BLOQUEO_ASIENTO_SEGUNDOS * 1000).toISOString();
+    const bloqueos = obtenerBloqueosVigentes().filter(b =>
+        !(Number(b.sala) === Number(sala) && b.fechaFuncion === fechaFuncion && b.horaFuncion === horaFuncion && b.asientoId === asientoId && b.idSesion === idSesion)
+    );
+    bloqueos.push({ sala: Number(sala), fechaFuncion, horaFuncion, asientoId, idSesion, expiracion });
+    guardarEnLocalStorageSeguro(LS_BLOQUEOS_ASIENTOS, bloqueos);
+}
+
+/** Libera una butaca puntual que esta sesión había apartado (al deseleccionarla). */
+function liberarAsientoBloqueado(sala, fechaFuncion, horaFuncion, asientoId) {
+    const idSesion = obtenerIdSesionCompra();
+    const bloqueos = obtenerBloqueosVigentes().filter(b =>
+        !(Number(b.sala) === Number(sala) && b.fechaFuncion === fechaFuncion && b.horaFuncion === horaFuncion && b.asientoId === asientoId && b.idSesion === idSesion)
+    );
+    guardarEnLocalStorageSeguro(LS_BLOQUEOS_ASIENTOS, bloqueos);
+}
+
+/** Libera TODOS los bloqueos de esta sesión (al pagar, cancelar la compra o que expire el temporizador). */
+function liberarTodosLosBloqueosDeSesion() {
+    const idSesion = obtenerIdSesionCompra();
+    const bloqueos = obtenerBloqueosVigentes().filter(b => b.idSesion !== idSesion);
+    guardarEnLocalStorageSeguro(LS_BLOQUEOS_ASIENTOS, bloqueos);
+}
+
+/** Extiende la expiración de los bloqueos de esta sesión (se llama junto al temporizador de compra). */
+function renovarBloqueosDeSesion() {
+    const idSesion = obtenerIdSesionCompra();
+    const nuevaExpiracion = new Date(Date.now() + DURACION_BLOQUEO_ASIENTO_SEGUNDOS * 1000).toISOString();
+    const bloqueos = obtenerBloqueosVigentes().map(b => b.idSesion === idSesion ? { ...b, expiracion: nuevaExpiracion } : b);
+    guardarEnLocalStorageSeguro(LS_BLOQUEOS_ASIENTOS, bloqueos);
+}
+
+/* ============================================================================
+   FIX — LIBRO DE VENTAS GENERAL (incluye compras de invitados)
+   ------------------------------------------------------------------------
+   guardarCompraEnHistorial() (cliente.js) solo guardaba la compra dentro del
+   usuario logueado, así que las compras de invitados (checkout sin sesión)
+   desaparecían para siempre y el dashboard del admin las subestimaba. Este
+   libro registra TODAS las compras, con o sin sesión.
+   ============================================================================ */
+function registrarVentaGeneral(compra) {
+    const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_GENERAL)) || [];
+    ventas.unshift(compra);
+    guardarEnLocalStorageSeguro(LS_VENTAS_GENERAL, ventas);
+}
+
+/** Devuelve el libro de ventas general. Si nunca se inicializó (instalación previa a este
+ *  fix), lo reconstruye UNA vez a partir de las compras que ya existían por usuario, para no
+ *  hacer "desaparecer" ventas históricas de las métricas del admin. */
+function obtenerVentasGenerales() {
+    let ventas = JSON.parse(localStorage.getItem(LS_VENTAS_GENERAL));
+    if (!Array.isArray(ventas)) {
+        const usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
+        ventas = usuarios.flatMap(u => (u.compras || []).map(c => ({ ...c, correoUsuario: u.correo })));
+        guardarEnLocalStorageSeguro(LS_VENTAS_GENERAL, ventas);
+    }
+    return ventas;
 }
 
 /** Convierte una duración con formato "2h 25m" (o variantes con espacios) en minutos totales. */

@@ -87,6 +87,14 @@ body {
 
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-visible {
+    scrollbar-color: #555 #111;
+    scrollbar-width: thin;
+}
+.scrollbar-visible::-webkit-scrollbar { height: 6px; }
+.scrollbar-visible::-webkit-scrollbar-track { background: #111; border-radius: 999px; }
+.scrollbar-visible::-webkit-scrollbar-thumb { background: #555; border-radius: 999px; }
+.scrollbar-visible::-webkit-scrollbar-thumb:hover { background: var(--brand-yellow); }
 
 /* ---------- 6. Pantalla y butacas ---------- */
 .screen-curve {
