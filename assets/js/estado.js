@@ -54,6 +54,7 @@ const LS_VENTAS_ASIENTOS = 'cinerama_ventas_asientos'; // FASE 10: registro pers
 // --- MÓDULO 9: catálogo de formatos de proyección (2D/3D/4DX/...) y tipos de entrada (General/Niño/...) ---
 const LS_FORMATOS_PROYECCION = 'cinerama_formatos_proyeccion';
 const LS_TIPOS_ENTRADA = 'cinerama_tipos_entrada';
+const LS_TARIFAS_DIA = 'cinerama_tarifas_dia'; // MÓDULO 2 (ampliado): tarifas base por día, editables desde Admin > Tarifas
 
 // --- FIX (corrección solicitada): ventas por FUNCIÓN real (no solo por sala) ---
 // Cada registro de LS_VENTAS_ASIENTOS ahora también guarda fecha/hora de la función,
@@ -132,100 +133,46 @@ const CUPONES_BASE = {
 };
 
 /* ============================================================================
-   MÓDULO 2 — JERARQUÍA DE TARIFAS DINÁMICAS
+   MÓDULO 2 — JERARQUÍA DE TARIFAS DINÁMICAS (editables desde Admin > Tarifas)
    ------------------------------------------------------------------------
-   Reemplaza el precio fijo por tipo de entrada (Adulto/Niño/Mayor/Preferencial):
-   ahora todos los asientos de una función pagan la misma tarifa, determinada
-   por el día en que se ve la película. Orden de evaluación (estricto):
-     1) ¿Película en Pre-Estreno?              -> tarifa feriado/fin de semana
-     2) ¿Fecha marcada como feriado/no laborable (calendario admin)? -> ídem
-     3) Jueves / Viernes / Sábado / Domingo     -> S/18
-     4) Lunes / Miércoles                       -> S/13
-     5) Martes                                  -> S/12
+   El precio final de un asiento se construye en 3 pasos:
+     1) Tarifa base del día  (este bloque — editable desde el panel Admin)
+     2) Recargo del formato  (catálogo de formatos — 2D/3D/4DX/...)
+     3) Descuento del tipo   (catálogo de tipos de entrada — General/Niño/...)
+
+   Jerarquía de evaluación de la tarifa base (estricta):
+     1) ¿Película en Pre-Estreno?                                 -> Tarifa Alta
+     2) Jueves / Viernes / Sábado / Domingo                       -> Tarifa Alta
+     3) Lunes / Miércoles                                         -> Tarifa Media
+     4) Martes                                                    -> Tarifa Económica
    ============================================================================ */
-const TARIFA_FERIADO_FIN_DE_SEMANA = 18.0;
-const TARIFAS_POR_DIA_SEMANA = {
-    'Lun': 13.0, 'Mié': 13.0,
-    'Mar': 12.0,
-    'Jue': TARIFA_FERIADO_FIN_DE_SEMANA,
-    'Vie': TARIFA_FERIADO_FIN_DE_SEMANA,
-    'Sáb': TARIFA_FERIADO_FIN_DE_SEMANA,
-    'Dom': TARIFA_FERIADO_FIN_DE_SEMANA
+
+// Valores por defecto de fábrica (solo se usan la primera vez que no hay localStorage).
+const TARIFAS_DIA_INICIALES = {
+    economica: 12.0,  // Martes
+    media:     13.0,  // Lunes / Miércoles
+    alta:      18.0   // Jue / Vie / Sáb / Dom / Pre-Estrenos
 };
+
+function obtenerTarifasDia() {
+    const guardado = JSON.parse(localStorage.getItem(LS_TARIFAS_DIA));
+    if (guardado && typeof guardado.economica === 'number') return guardado;
+    guardarEnLocalStorageSeguro(LS_TARIFAS_DIA, TARIFAS_DIA_INICIALES);
+    return { ...TARIFAS_DIA_INICIALES };
+}
+
+function guardarTarifasDia(obj) {
+    return guardarEnLocalStorageSeguro(LS_TARIFAS_DIA, obj);
+}
+
+/** Conveniencia: tarifa de un slot de día ('economica'|'media'|'alta') como número. */
+function obtenerTarifaPorSlot(slot) {
+    return obtenerTarifasDia()[slot] ?? obtenerTarifasDia().alta;
+}
 
 // MÓDULO 3 — margen de limpieza obligatorio entre funciones de una misma sala.
 const MARGEN_LIMPIEZA_MINUTOS = 30;
 
-/* ============================================================================
-   MÓDULO 2/4 — CALENDARIO DE FERIADOS Y DÍAS NO LABORABLES
-   ------------------------------------------------------------------------
-   Precargado con los 16 feriados nacionales oficiales del Perú (fuente:
-   calendario laboral 2026). El Módulo 4 agrega la UI para que el admin
-   añada/quite fechas excepcionales; ambos leen/escriben el mismo localStorage.
-   ============================================================================ */
-const LS_FERIADOS = 'cinerama_feriados';
-
-// Feriados de fecha fija (mismo día/mes todos los años)
-const FERIADOS_FIJOS_RECURRENTES = [
-    { mesDia: '01-01', nombre: 'Año Nuevo' },
-    { mesDia: '05-01', nombre: 'Día del Trabajo' },
-    { mesDia: '06-07', nombre: 'Batalla de Arica y Día de la Bandera' },
-    { mesDia: '06-29', nombre: 'San Pedro y San Pablo' },
-    { mesDia: '07-23', nombre: 'Día de la Fuerza Aérea del Perú' },
-    { mesDia: '07-28', nombre: 'Fiestas Patrias' },
-    { mesDia: '07-29', nombre: 'Fiestas Patrias' },
-    { mesDia: '08-06', nombre: 'Batalla de Junín' },
-    { mesDia: '08-30', nombre: 'Santa Rosa de Lima' },
-    { mesDia: '10-08', nombre: 'Combate de Angamos' },
-    { mesDia: '11-01', nombre: 'Todos los Santos' },
-    { mesDia: '12-08', nombre: 'Inmaculada Concepción' },
-    { mesDia: '12-09', nombre: 'Batalla de Ayacucho' },
-    { mesDia: '12-25', nombre: 'Navidad' }
-];
-
-// Feriados de fecha móvil (Semana Santa, depende de la Pascua): se precargan
-// como fechas exactas del año en curso. IMPORTANTE: hay que revisarlos/
-// actualizarlos cada año — el admin también puede editarlos a mano (Módulo 4).
-const FERIADOS_MOVILES_PRECARGADOS = [
-    { fecha: '2026-04-02', nombre: 'Jueves Santo' },
-    { fecha: '2026-04-03', nombre: 'Viernes Santo' }
-];
-
-/** Combina feriados fijos + móviles precargados en fechas ISO exactas del año dado. */
-function generarFeriadosFijosDelAnio(anio) {
-    const deFijos = FERIADOS_FIJOS_RECURRENTES.map(f => ({ fecha: `${anio}-${f.mesDia}`, nombre: f.nombre, tipo: 'feriado' }));
-    const deMoviles = FERIADOS_MOVILES_PRECARGADOS
-        .filter(f => f.fecha.startsWith(`${anio}-`))
-        .map(f => ({ fecha: f.fecha, nombre: f.nombre, tipo: 'feriado' }));
-    return [...deFijos, ...deMoviles];
-}
-
-/**
- * Lee el calendario de feriados/no-laborables desde localStorage. Si no existe
- * aún (primera carga), lo inicializa con los feriados precargados del año actual.
- * Estructura: { [fechaISO]: { nombre, tipo: 'feriado'|'no-laborable' } }
- */
-function obtenerCalendarioFeriados() {
-    const guardado = JSON.parse(localStorage.getItem(LS_FERIADOS));
-    if (guardado && Object.keys(guardado).length > 0) return guardado;
-
-    const anioActual = new Date().getFullYear();
-    const mapa = {};
-    generarFeriadosFijosDelAnio(anioActual).forEach(f => { mapa[f.fecha] = { nombre: f.nombre, tipo: f.tipo }; });
-    guardarEnLocalStorageSeguro(LS_FERIADOS, mapa);
-    return mapa;
-}
-
-function guardarCalendarioFeriados(mapa) {
-    return guardarEnLocalStorageSeguro(LS_FERIADOS, mapa);
-}
-
-/** ¿La fecha ISO (YYYY-MM-DD) dada está marcada como feriado o día no laborable? */
-function esFechaFeriadoONoLaborable(fechaISO) {
-    if (!fechaISO) return false;
-    const calendario = obtenerCalendarioFeriados();
-    return Boolean(calendario[fechaISO]);
-}
 
 /* ============================================================================
    MÓDULO 9 — CATÁLOGO DE FORMATOS DE PROYECCIÓN (tab Admin > Tarifas)

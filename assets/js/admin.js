@@ -1877,21 +1877,77 @@ window.cambiarSalaMantenimiento = async (valor) => {
     renderizarAdminSalas();
 };
 
-/* ============================================================================
-   MÓDULO 4 — CALENDARIO DE FERIADOS (panel admin)
-   ------------------------------------------------------------------------
-   Reutiliza las funciones de estado.js (obtenerCalendarioFeriados /
-   guardarCalendarioFeriados) que ya alimentan el motor de tarifas del
-   Módulo 2 — este panel es solo la UI encima de ese mismo localStorage.
-   ============================================================================ */
-let calendarioAdminMesActual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-const NOMBRES_MESES_CALENDARIO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
 function renderizarAdminTarifas() {
+    renderizarTarifasDiaAdmin();
     renderizarFormatosAdmin();
     renderizarTiposEntradaAdmin();
-    renderizarAdminCalendario();
 }
+
+/* ============================================================================
+   MÓDULO 2 (ampliado) — TARIFAS POR DÍA: UI editable en Admin > Tarifas
+   Lee y escribe sobre obtenerTarifasDia() / guardarTarifasDia() de estado.js.
+   ============================================================================ */
+const SLOTS_TARIFA = [
+    {
+        slot: 'economica',
+        label: 'Tarifa Económica',
+        badge: 'Mar',
+        badgeClass: 'bg-blue-500/20 text-blue-300',
+        descripcion: 'Solo los Martes',
+        icono: 'fa-circle-dollar-to-slot'
+    },
+    {
+        slot: 'media',
+        label: 'Tarifa Media',
+        badge: 'Lun · Mié',
+        badgeClass: 'bg-purple-500/20 text-purple-300',
+        descripcion: 'Lunes y Miércoles',
+        icono: 'fa-sack-dollar'
+    },
+    {
+        slot: 'alta',
+        label: 'Tarifa Alta',
+        badge: 'Jue · Vie · Sáb · Dom · Pre-Estrenos',
+        badgeClass: 'bg-brand-red/20 text-red-300',
+        descripcion: 'Jue, Vie, Sáb, Dom y Pre-Estrenos',
+        icono: 'fa-fire'
+    }
+];
+
+function renderizarTarifasDiaAdmin() {
+    const contenedor = document.getElementById('admin-tarifas-dia-lista');
+    if (!contenedor) return;
+    const tarifas = obtenerTarifasDia();
+    contenedor.innerHTML = SLOTS_TARIFA.map(s => `
+        <div class="flex items-center gap-3 bg-dark-900 rounded-xl px-4 py-3">
+            <div class="w-8 h-8 rounded-lg bg-dark-800 flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid ${s.icono} text-brand-yellow text-sm"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-white text-sm font-bold leading-tight">${s.label}</p>
+                <p class="text-gray-500 text-xs mt-0.5">${s.descripcion}</p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <span class="text-gray-400 text-sm">S/</span>
+                <input
+                    type="number" min="0" step="0.5"
+                    value="${tarifas[s.slot]}"
+                    onchange="editarTarifaDiaAdmin('${s.slot}', this.value)"
+                    class="w-20 bg-dark-800 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none focus:border-brand-yellow"
+                >
+            </div>
+        </div>
+    `).join('');
+}
+
+window.editarTarifaDiaAdmin = (slot, valor) => {
+    const num = Math.max(0, Number(valor) || 0);
+    if (num === 0) { mostrarToast('La tarifa no puede ser S/ 0.', 'error'); renderizarTarifasDiaAdmin(); return; }
+    const tarifas = obtenerTarifasDia();
+    tarifas[slot] = num;
+    guardarTarifasDia(tarifas);
+    mostrarToast('Tarifa actualizada correctamente.', 'exito');
+};
 
 /* ============================================================================
    MÓDULO 9 — TARIFAS: catálogo de formatos y de tipos de entrada (listas editables)
@@ -2032,72 +2088,6 @@ window.eliminarTipoEntradaAdmin = async (id) => {
     mostrarToast('Tipo de entrada eliminado.', 'exito');
 };
 
-window.cambiarMesCalendarioAdmin = (delta) => {
-    calendarioAdminMesActual = new Date(calendarioAdminMesActual.getFullYear(), calendarioAdminMesActual.getMonth() + delta, 1);
-    renderizarAdminCalendario();
-};
-
-function renderizarAdminCalendario() {
-    const calendario = obtenerCalendarioFeriados();
-    const anio = calendarioAdminMesActual.getFullYear();
-    const mes = calendarioAdminMesActual.getMonth();
-    document.getElementById('admin-calendario-mes-titulo').textContent = `${NOMBRES_MESES_CALENDARIO[mes]} ${anio}`;
-
-    const primerDiaSemana = new Date(anio, mes, 1).getDay(); // 0 = domingo
-    const diasEnMes = new Date(anio, mes + 1, 0).getDate();
-    const grid = document.getElementById('admin-calendario-grid');
-    let html = '';
-    for (let i = 0; i < primerDiaSemana; i++) html += `<div></div>`;
-    for (let dia = 1; dia <= diasEnMes; dia++) {
-        const fechaISO = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-        const marca = calendario[fechaISO];
-        let clase = 'admin-dia-calendario';
-        if (marca && marca.tipo === 'feriado') clase += ' admin-dia-feriado';
-        else if (marca && marca.tipo === 'no-laborable') clase += ' admin-dia-no-laborable';
-        html += `<button type="button" onclick="abrirModalEditarFeriado('${fechaISO}')" class="${clase}" title="${marca ? marca.nombre : 'Día normal'}">${dia}</button>`;
-    }
-    grid.innerHTML = html;
-}
-
-window.abrirModalEditarFeriado = (fechaISO) => {
-    const calendario = obtenerCalendarioFeriados();
-    const marca = calendario[fechaISO];
-    document.getElementById('feriado-fecha-iso').value = fechaISO;
-
-    const [anio, mes, dia] = fechaISO.split('-').map(Number);
-    const fechaLegible = new Date(anio, mes - 1, dia).toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    document.getElementById('feriado-fecha-legible').textContent = fechaLegible.charAt(0).toUpperCase() + fechaLegible.slice(1);
-    document.getElementById('feriado-tipo').value = marca ? marca.tipo : '';
-    document.getElementById('feriado-nombre').value = marca ? marca.nombre : '';
-
-    const modal = document.getElementById('modal-editar-feriado');
-    modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('editar-feriado-contenido').classList.remove('scale-95'); }, 10);
-};
-
-window.cerrarModalEditarFeriado = () => {
-    const modal = document.getElementById('modal-editar-feriado');
-    modal.classList.add('opacity-0');
-    document.getElementById('editar-feriado-contenido').classList.add('scale-95');
-    setTimeout(() => modal.classList.add('hidden'), 200);
-};
-
-window.guardarEdicionFeriado = () => {
-    const fechaISO = document.getElementById('feriado-fecha-iso').value;
-    const tipo = document.getElementById('feriado-tipo').value;
-    const nombre = document.getElementById('feriado-nombre').value.trim();
-
-    const calendario = obtenerCalendarioFeriados();
-    if (!tipo) {
-        delete calendario[fechaISO];
-    } else {
-        calendario[fechaISO] = { tipo, nombre: nombre || (tipo === 'feriado' ? 'Feriado' : 'Día no laborable') };
-    }
-    guardarCalendarioFeriados(calendario);
-    renderizarAdminCalendario();
-    cerrarModalEditarFeriado();
-    mostrarToast('Calendario actualizado correctamente.', 'exito');
-};
 window.renderizarSala = renderizarAdminSalas;
 
 // --- 15.4 Descuentos: creación de cupones y promociones globales ---
@@ -2664,3 +2654,31 @@ window.eliminarPersonalAdmin = async (correo) => {
     mostrarToast('Cuenta eliminada.', 'exito');
     renderizarAdminPersonal();
 };
+
+/* ============================================================================
+   FORMATO AUTOMÁTICO DE DURACIÓN (Agregado)
+   ============================================================================ */
+function configurarFormatoDuracion() {
+    const inputs = ['admin-pelicula-duracion', 'edit-pelicula-duracion'];
+    inputs.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', function() {
+                let val = this.value.replace(/\D/g, '');
+                let formatted = '';
+                if (val.length > 0) {
+                    formatted += val.substring(0, 2) + 'h';
+                }
+                if (val.length > 2) {
+                    formatted += ' ' + val.substring(2, 4) + 'm';
+                }
+                this.value = formatted;
+            });
+        }
+    });
+}
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    configurarFormatoDuracion();
+} else {
+    document.addEventListener('DOMContentLoaded', configurarFormatoDuracion);
+}

@@ -637,20 +637,20 @@ function resolverAbreviaturaDiaDeEtiqueta(etiquetaFecha) {
  * (estadoPedido.pelicula + estadoPedido.fecha), siguiendo la jerarquía
  * estricta del negocio. Todos los asientos de una misma función pagan esta
  * misma tarifa (ya no hay distinción por tipo de entrada).
+ * Lee los montos desde obtenerTarifasDia() — editables en Admin > Tarifas.
  */
 function calcularTarifaFuncionActual() {
     const pelicula = estadoPedido.pelicula;
+    const tarifas = obtenerTarifasDia(); // { economica, media, alta }
 
-    // 1) Pre-estreno
-    if (pelicula && pelicula.tipoLanzamiento === 'Pre-Estreno') return TARIFA_FERIADO_FIN_DE_SEMANA;
+    // 1) Pre-estreno → tarifa alta
+    if (pelicula && pelicula.tipoLanzamiento === 'Pre-Estreno') return tarifas.alta;
 
-    // 2) Feriado / día no laborable (calendario del admin — Módulo 4 le pone UI)
-    const fechaISO = resolverFechaISODeEtiqueta(estadoPedido.fecha);
-    if (fechaISO && esFechaFeriadoONoLaborable(fechaISO)) return TARIFA_FERIADO_FIN_DE_SEMANA;
-
-    // 3-5) Según día de la semana
-    const abreviaturaDia = resolverAbreviaturaDiaDeEtiqueta(estadoPedido.fecha);
-    return TARIFAS_POR_DIA_SEMANA[abreviaturaDia] ?? TARIFA_FERIADO_FIN_DE_SEMANA; // fallback seguro
+    // 2) Según día de la semana
+    const dia = resolverAbreviaturaDiaDeEtiqueta(estadoPedido.fecha);
+    if (dia === 'Mar') return tarifas.economica;               // Martes
+    if (dia === 'Lun' || dia === 'Mié') return tarifas.media;  // Lun / Mié
+    return tarifas.alta;                                        // Jue / Vie / Sáb / Dom (fallback)
 }
 
 /** MÓDULO 9: tarifa base del día (calcularTarifaFuncionActual) + recargo del formato de la función elegida. Este es el precio de un asiento con tipo de entrada "General" (0% de descuento); cada tipo aplica su descuento sobre este monto. */
@@ -688,26 +688,58 @@ window.clickAsiento = (asientoId) => {
         if (btn.dataset.accesible === 'true') btn.classList.add('asiento-cliente-accesible');
         else btn.classList.add('bg-green-600');
         liberarAsientoBloqueado(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId); // FIX bloqueo temporal
+        actualizarResumenAsientos();
     } else {
         // Módulo 6: límite máximo de asientos por transacción.
         if (estadoPedido.asientos.length >= MAX_ASIENTOS_POR_COMPRA) {
             mostrarToast(`Solo puedes seleccionar hasta ${MAX_ASIENTOS_POR_COMPRA} asientos por compra.`, 'error');
             return;
         }
-        // MÓDULO 9: cada asiento entra con el tipo de entrada por defecto (General); se puede
-        // cambiar después desde el resumen (cambiarTipoEntradaAsiento), sin volver a elegir el asiento.
-        const tipoPorDefecto = obtenerTipoEntradaPorDefecto();
-        estadoPedido.asientos.push({
-            id: asientoId,
-            tipoEntradaId: tipoPorDefecto.id,
-            tipoLabel: tipoPorDefecto.nombre,
-            precio: calcularPrecioAsientoPorTipo(tipoPorDefecto.id)
-        });
-        btn.classList.remove('bg-green-600', 'hover:bg-green-500');
-        btn.classList.add('selected');
-        bloquearAsientoTemporalmente(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId); // FIX bloqueo temporal
+
+        const catalogoTipos = obtenerCatalogoTiposEntrada();
+        let htmlTipos = catalogoTipos.map(t => {
+            let precio = calcularPrecioAsientoPorTipo(t.id);
+            return `
+                <button type="button" class="w-full bg-dark-900 border border-white/10 hover:border-brand-red rounded-xl p-3 flex justify-between items-center transition-colors mb-2 text-left" onclick="seleccionarTipoAsientoTemp('${t.id}')">
+                    <div>
+                        <p class="text-white font-bold text-sm">${t.nombre}</p>
+                        ${t.descuentoPct > 0 ? `<p class="text-brand-yellow text-xs">-${t.descuentoPct}% Dcto.</p>` : ''}
+                    </div>
+                    <span class="text-white font-bold">${formatearMoneda(precio)}</span>
+                </button>
+            `;
+        }).join('');
+
+        const modalDiv = document.createElement('div');
+        modalDiv.id = 'modal-seleccion-tipo-asiento';
+        modalDiv.className = 'fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 opacity-100 transition-opacity duration-200';
+        modalDiv.innerHTML = `
+            <div class="bg-dark-800 p-6 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full relative transform scale-100 transition-transform duration-200">
+                <button onclick="document.getElementById('modal-seleccion-tipo-asiento').remove()" class="absolute top-4 right-4 text-gray-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                <h3 class="text-xl font-bold text-white mb-1">Elegir tipo de entrada</h3>
+                <p class="text-gray-400 text-sm mb-4">Para el asiento <span class="text-brand-yellow font-bold">${asientoId}</span></p>
+                <div class="max-h-[60vh] overflow-y-auto hide-scrollbar">
+                    ${htmlTipos}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalDiv);
+
+        window.seleccionarTipoAsientoTemp = (tipoEntradaId) => {
+            const tipo = obtenerTipoEntradaPorId(tipoEntradaId);
+            estadoPedido.asientos.push({
+                id: asientoId,
+                tipoEntradaId: tipo.id,
+                tipoLabel: tipo.nombre,
+                precio: calcularPrecioAsientoPorTipo(tipo.id)
+            });
+            btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+            btn.classList.add('selected');
+            bloquearAsientoTemporalmente(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId); 
+            actualizarResumenAsientos();
+            modalDiv.remove();
+        };
     }
-    actualizarResumenAsientos();
 };
 
 /** MÓDULO 9: cambia el tipo de entrada de un asiento ya elegido y recalcula su precio (sin tener que deseleccionarlo). */
