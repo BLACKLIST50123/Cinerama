@@ -1,7 +1,7 @@
 /* ============================================================================
-   CINERAMA — ADMIN.JS — Panel de administrador completo
+   CINE NÁUTICA — ADMIN.JS — Panel de administrador completo
    ------------------------------------------------------------------------
-   Parte de la arquitectura modular de Cinerama (Fase 14).
+   Parte de la arquitectura modular de la app (Fase 14).
    Cargado como <script> clásico (no ES module) para funcionar también
    abriendo index.html directamente con file://, sin necesidad de servidor.
    CRUD de cartelera y horarios (con validación de choques de sala),
@@ -16,7 +16,7 @@
 function asegurarAdminDemo() {
     let usuarios = JSON.parse(localStorage.getItem(LS_USUARIOS)) || [];
     if (!usuarios.find(u => u.correo === 'admin@cinerama.com')) {
-        usuarios.push({ nombre: 'Administrador Cinerama', correo: 'admin@cinerama.com', contrasena: 'admin123', rol: 'admin', compras: [], metodoPago: null });
+        usuarios.push({ nombre: 'Administrador Náutica', correo: 'admin@cinerama.com', contrasena: 'admin123', rol: 'admin', activo: true, compras: [], metodoPago: null });
         localStorage.setItem(LS_USUARIOS, JSON.stringify(usuarios));
     }
 }
@@ -65,15 +65,18 @@ window.cambiarTabAdmin = async (tab) => {
     if (panelActivo) panelActivo.classList.remove('hidden');
 
     // FASE 8: breadcrumb dinámico con el nombre de la sección activa
-    const nombresSeccion = { cartelera: 'Cartelera', dulceria: 'Dulcería', salas: 'Salas (Mantenimiento)', calendario: 'Calendario (Feriados)', descuentos: 'Descuentos', dashboard: 'Dashboard' };
+    const nombresSeccion = { cartelera: 'Cartelera', horarios: 'Horarios', dulceria: 'Dulcería', salas: 'Salas (Mantenimiento)', tarifas: 'Tarifas', descuentos: 'Descuentos', socios: 'Socios', personal: 'Personal', dashboard: 'Dashboard' };
     const breadcrumb = document.getElementById('admin-breadcrumb-actual');
     if (breadcrumb) breadcrumb.textContent = nombresSeccion[tab] || tab;
 
-    if (tab === 'cartelera') { renderizarAdminCartelera(); renderizarAdminBanner(); }
+    if (tab === 'cartelera') { renderizarAdminCartelera(); renderizarAdminBanner(); pintarCheckboxesFormatosAdmin('admin-pelicula-formatos', []); }
+    if (tab === 'horarios') renderizarAdminHorarios(); // MÓDULO 9
     if (tab === 'dulceria') { renderizarAdminDulceria(); renderizarListaCategoriasDulceria(); }
     if (tab === 'salas') renderizarAdminSalas();
-    if (tab === 'calendario') renderizarAdminCalendario();
+    if (tab === 'tarifas') renderizarAdminTarifas(); // MÓDULO 9 (antes "calendario")
     if (tab === 'descuentos') renderizarAdminDescuentos();
+    if (tab === 'socios') reiniciarPanelSociosAdmin();
+    if (tab === 'personal') renderizarAdminPersonal(); // MÓDULO 8
     if (tab === 'dashboard') renderizarAdminDashboard();
 };
 
@@ -197,6 +200,23 @@ window.alternarOrigenImagenBannerAdmin = (prefijo) => {
 
 
 
+/* MÓDULO 9: la duración se ingresa en dos campos numéricos (horas y minutos) en vez de un
+   texto libre "2h 25m". Internamente se sigue guardando como ese mismo string (duracionAMinutos,
+   el motor de choques de horarios y el resto del código ya lo esperan así), solo cambia la UI. */
+function combinarDuracionHM(idHoras, idMinutos, idOculto) {
+    const horas = Math.max(0, Math.min(9, parseInt(document.getElementById(idHoras).value, 10) || 0));
+    const minutos = Math.max(0, Math.min(59, parseInt(document.getElementById(idMinutos).value, 10) || 0));
+    const texto = `${horas}h ${minutos}m`;
+    document.getElementById(idOculto).value = texto;
+    return texto;
+}
+
+function separarDuracionHM(duracionStr, idHoras, idMinutos) {
+    const totalMinutos = duracionAMinutos(duracionStr);
+    document.getElementById(idHoras).value = Math.floor(totalMinutos / 60) || '';
+    document.getElementById(idMinutos).value = totalMinutos % 60 || '';
+}
+
 /** Rellena un <select> con las opciones "Sala 1" .. "Sala N". */
 function poblarSelectSalas(selectEl, seleccionActual = 1) {
     if (!selectEl) return;
@@ -245,17 +265,6 @@ function obtenerSalasOcupadas(fecha, hora, duracionMinutos, excluirPeliculaId = 
     return ocupadas;
 }
 
-/** Duración (en minutos) de la película actualmente cargada en el gestor de horarios, ya sea existente o en borrador. */
-function obtenerDuracionActualFormularioHorarios() {
-    if (gestorHorariosEsBorrador) {
-        const inputDuracion = document.getElementById('admin-pelicula-duracion');
-        return duracionAMinutos(inputDuracion ? inputDuracion.value : '');
-    }
-    const id = document.getElementById('horarios-pelicula-id').value;
-    const pelicula = baseDatosPeliculas[id];
-    return duracionAMinutos(pelicula ? pelicula.duracion : '');
-}
-
 /** Rellena un <select> de salas marcando como deshabilitadas las que ya están ocupadas en esa fecha+hora. */
 function poblarSelectSalasDisponibles(selectEl, ocupadas, salaPreseleccionada = 1) {
     if (!selectEl) return;
@@ -267,57 +276,12 @@ function poblarSelectSalasDisponibles(selectEl, ocupadas, salaPreseleccionada = 
     selectEl.innerHTML = html;
 }
 
-// Estado de trabajo del modal de horarios: lista plana { fecha, formato, hora, sala } pendiente de guardar
-let horariosPendientesModal = [];
-let funcionesBorradorNuevaPelicula = [];
-let gestorHorariosEsBorrador = false;
-
-function construirHorariosDesdeLista(lista) {
-    const horarios = {};
-    lista.forEach(h => {
-        if (!horarios[h.fecha]) horarios[h.fecha] = [];
-        let funcion = horarios[h.fecha].find(f => f.formato === h.formato);
-        if (!funcion) { funcion = { formato: h.formato, horas: [] }; horarios[h.fecha].push(funcion); }
-        funcion.horas.push({ hora: h.hora, sala: h.sala });
-    });
-    return horarios;
-}
-
-/** Inicializa los chips de selección única de Formato (Módulo 3) y sincroniza el input oculto. */
-function inicializarChipsFormatoHorario() {
-    let dimension = '2D';
-    let idioma = 'Doblada';
-    const actualizarInputOculto = () => {
-        document.getElementById('horario-nuevo-formato').value = `${dimension} / ${idioma}`;
-    };
-    renderizarGrupoChipsUnico('horario-nuevo-formato-dimension', ['2D', '3D'], '2D', (valor) => { dimension = valor; actualizarInputOculto(); });
-    renderizarGrupoChipsUnico('horario-nuevo-formato-idioma', ['Doblada', 'Subtitulada'], 'Doblada', (valor) => { idioma = valor; actualizarInputOculto(); });
-}
-
-window.actualizarTipoPeliculaAdmin = async () => {
-    const checkboxEstreno = document.getElementById('admin-pelicula-es-estreno');
-    const esEstreno = checkboxEstreno.checked;
+window.actualizarTipoPeliculaAdmin = () => {
+    const esEstreno = document.getElementById('admin-pelicula-es-estreno').checked;
     const mensaje = document.getElementById('admin-pelicula-tipo-mensaje');
-    const botonFunciones = document.getElementById('btn-crear-funciones-nueva-pelicula');
-
-    if (esEstreno && funcionesBorradorNuevaPelicula.length > 0) {
-        const continuar = await confirmarAccion({
-            titulo: '¿Cambiar a Próximo Estreno?',
-            mensaje: 'Al cambiar a Próximo Estreno se descartarán las funciones que ya preparaste para esta película.',
-            tipo: 'advertencia',
-            textoConfirmar: 'Sí, descartar y continuar',
-            textoCancelar: 'Cancelar'
-        });
-        if (!continuar) {
-            checkboxEstreno.checked = false;
-            return;
-        }
-    }
-    if (esEstreno) funcionesBorradorNuevaPelicula = [];
     if (mensaje) mensaje.textContent = esEstreno
-        ? 'PRÓXIMO ESTRENO: Se publicará sin funciones hasta que pase a cartelera.'
-        : 'EN CARTELERA: Debes crear al menos una función.';
-    if (botonFunciones) botonFunciones.classList.toggle('hidden', esEstreno);
+        ? 'PRÓXIMO ESTRENO: se publica sin funciones hasta que pase a cartelera.'
+        : 'EN CARTELERA: podrás programarle funciones desde el tab "Horarios" apenas la guardes.';
 
     // Módulo 3: el tipo de lanzamiento (Regular/Estreno/Pre-Estreno) solo aplica a películas en Cartelera.
     const contenedorLanzamiento = document.getElementById('admin-pelicula-lanzamiento-contenedor');
@@ -331,225 +295,631 @@ window.actualizarLanzamientoVisibleEdicion = () => {
     if (contenedorLanzamiento) contenedorLanzamiento.classList.toggle('hidden', esEstreno);
 };
 
-/** Refresca el <select> de sala del modal de horarios, considerando choques globales Y los horarios aún no guardados. */
-window.refrescarSalaModalHorarios = () => {
-    const fechaInput = document.getElementById('horario-nuevo-fecha');
-    const horaInput = document.getElementById('horario-nuevo-hora');
-    const selectSala = document.getElementById('horario-nuevo-sala');
-    const idActual = document.getElementById('horarios-pelicula-id').value;
-    if (!fechaInput || !horaInput || !selectSala) return;
-
-    const fechaAmigable = fechaInput.value ? formatearFechaAmigable(fechaInput.value) : null;
-    const duracionMinutos = obtenerDuracionActualFormularioHorarios();
-    const ocupadasGlobal = (fechaAmigable && horaInput.value) ? obtenerSalasOcupadas(fechaAmigable, horaInput.value, duracionMinutos, idActual) : new Set();
-
-    const ocupadasPendientes = new Set();
-    if (fechaAmigable && horaInput.value) {
-        const inicioNueva = horaAMinutos(horaInput.value);
-        const finNueva = inicioNueva !== null ? inicioNueva + duracionMinutos + MARGEN_LIMPIEZA_MINUTOS : null;
-        horariosPendientesModal.forEach(h => {
-            if (h.fecha !== fechaAmigable) return;
-            const inicioExistente = horaAMinutos(h.hora);
-            if (inicioExistente === null || finNueva === null) return;
-            const finExistente = inicioExistente + duracionMinutos + MARGEN_LIMPIEZA_MINUTOS;
-            if (inicioNueva < finExistente && inicioExistente < finNueva) ocupadasPendientes.add(h.sala);
-        });
-    }
-
-    const todasOcupadas = new Set([...ocupadasGlobal, ...ocupadasPendientes]);
-    const salaPrevia = Number(selectSala.value) || 1;
-    poblarSelectSalasDisponibles(selectSala, todasOcupadas, salaPrevia);
-
-    const opcionSeleccionada = selectSala.options[selectSala.selectedIndex];
-    document.getElementById('horario-nuevo-aviso').classList.toggle('hidden', !(opcionSeleccionada && opcionSeleccionada.disabled));
-};
-
-/** Agrega el horario del mini-formulario a la lista de trabajo (validando fecha/hora/formato y choque de sala). */
-window.agregarHorarioPendiente = () => {
-    const fechaInput = document.getElementById('horario-nuevo-fecha');
-    const formatoInput = document.getElementById('horario-nuevo-formato');
-    const horaInput = document.getElementById('horario-nuevo-hora');
-    const salaInput = document.getElementById('horario-nuevo-sala');
-    const idActual = document.getElementById('horarios-pelicula-id').value;
-
-    if (!fechaInput.value) { mostrarToast('Selecciona una fecha para la función.', 'error'); return; }
-    if (!formatoInput.value.trim()) { mostrarToast('Ingresa el formato (ej: 2D Doblada).', 'error'); return; }
-    if (!horaInput.value) { mostrarToast('Selecciona una hora para la función.', 'error'); return; }
-
-    const fechaAmigable = formatearFechaAmigable(fechaInput.value);
-    const sala = Number(salaInput.value);
-    const duracionMinutos = obtenerDuracionActualFormularioHorarios();
-
-    const ocupadasGlobal = obtenerSalasOcupadas(fechaAmigable, horaInput.value, duracionMinutos, idActual);
-
-    const inicioNueva = horaAMinutos(horaInput.value);
-    const finNueva = inicioNueva + duracionMinutos + MARGEN_LIMPIEZA_MINUTOS;
-    const chocaConPendiente = horariosPendientesModal.some(h => {
-        if (h.fecha !== fechaAmigable || h.sala !== sala) return false;
-        const inicioExistente = horaAMinutos(h.hora);
-        if (inicioExistente === null) return false;
-        const finExistente = inicioExistente + duracionMinutos + MARGEN_LIMPIEZA_MINUTOS;
-        return inicioNueva < finExistente && inicioExistente < finNueva;
-    });
-
-    if (ocupadasGlobal.has(sala) || chocaConPendiente) {
-        mostrarToast(`La Sala ${sala} no está libre a esa hora: se necesitan ${MARGEN_LIMPIEZA_MINUTOS} min de limpieza entre funciones.`, 'error');
-        document.getElementById('horario-nuevo-aviso').classList.remove('hidden');
-        return;
-    }
-
-    horariosPendientesModal.push({ fecha: fechaAmigable, formato: formatoInput.value.trim(), hora: horaInput.value, sala });
-    renderizarListaHorariosPendientes();
-
-    horaInput.value = '';
-    document.getElementById('horario-nuevo-aviso').classList.add('hidden');
-    refrescarSalaModalHorarios();
-    mostrarToast('Horario agregado a la lista. No olvides "Guardar Horarios".', 'info');
-};
-
-/** Quita un horario pendiente de la lista de trabajo (aún no guardado). */
-window.quitarHorarioPendiente = (indice) => {
-    horariosPendientesModal.splice(indice, 1);
-    renderizarListaHorariosPendientes();
-    refrescarSalaModalHorarios();
-};
-
-/** Pinta la lista de horarios pendientes, agrupados por fecha, con su botón de quitar. */
-function renderizarListaHorariosPendientes() {
-    const contenedor = document.getElementById('lista-horarios-pendientes');
+/* ============================================================================
+   MÓDULO 9 — Checkboxes de "formatos disponibles" (formulario de película)
+   Reutilizado tanto en "Agregar Película" como en "Editar Película".
+   ============================================================================ */
+function pintarCheckboxesFormatosAdmin(contenedorId, formatosMarcados = []) {
+    const contenedor = document.getElementById(contenedorId);
     if (!contenedor) return;
-
-    if (horariosPendientesModal.length === 0) {
-        contenedor.innerHTML = '<p class="text-gray-500 text-sm italic">Aún no hay horarios. Agrega al menos uno.</p>';
-        return;
-    }
-
-    const porFecha = {};
-    horariosPendientesModal.forEach((h, indice) => {
-        if (!porFecha[h.fecha]) porFecha[h.fecha] = [];
-        porFecha[h.fecha].push({ ...h, indice });
-    });
-
-    let html = '';
-    Object.entries(porFecha).forEach(([fecha, horarios]) => {
-        html += `<div class="bg-dark-900 border border-white/10 rounded-xl p-3">
-            <p class="text-brand-yellow font-bold text-sm mb-2">${fecha}</p>
-            <div class="flex flex-wrap gap-2">`;
-        horarios.forEach(h => {
-            html += `<span class="inline-flex items-center gap-2 bg-dark-800 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
-                <span class="font-bold">${h.hora}</span> <span class="text-gray-400">${h.formato}</span> <span class="text-brand-red font-bold">Sala ${h.sala}</span>
-                <button type="button" onclick="quitarHorarioPendiente(${h.indice})" class="text-gray-500 hover:text-brand-red ml-1"><i class="fa-solid fa-xmark"></i></button>
-            </span>`;
-        });
-        html += `</div></div>`;
-    });
-    contenedor.innerHTML = html;
+    const catalogo = obtenerCatalogoFormatos();
+    contenedor.innerHTML = catalogo.map(f => `
+        <label class="flex items-center gap-1.5 bg-dark-800 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-gray-300 cursor-pointer hover:border-brand-red/50 transition-colors">
+            <input type="checkbox" value="${f.id}" class="accent-brand-red" ${formatosMarcados.includes(f.id) ? 'checked' : ''}> ${f.nombre}
+        </label>
+    `).join('');
 }
 
-/** Abre el modal de horarios de una película, precargando sus funciones actuales como lista de trabajo. */
-window.abrirModalHorarios = (peliculaId) => {
-    const pelicula = baseDatosPeliculas[peliculaId];
-    if (!pelicula) { mostrarToast('Esta película no tiene horarios propios (es un Próximo Estreno).', 'error'); return; }
+function leerFormatosElegidosAdmin(contenedorId) {
+    const contenedor = document.getElementById(contenedorId);
+    if (!contenedor) return [];
+    return Array.from(contenedor.querySelectorAll('input[type="checkbox"]:checked')).map(el => el.value);
+}
 
-    gestorHorariosEsBorrador = false;
-    document.getElementById('horarios-pelicula-id').value = peliculaId;
-    document.getElementById('horarios-pelicula-titulo').textContent = pelicula.titulo;
+/* ============================================================================
+   MÓDULO 9 — TAB "HORARIOS": calendario + programación de funciones
+   ------------------------------------------------------------------------
+   Antes las funciones de una película se creaban dentro del formulario de
+   Cartelera; ahora Cartelera solo guarda datos de la película y este tab es
+   el único que crea/edita/mueve funciones. El dato sigue viviendo donde
+   siempre (pelicula.horarios[etiquetaAmigable] = [{formato, formatoId,
+   idioma, horas:[{hora,sala}]}]), solo cambió quién lo edita.
+   ============================================================================ */
+let horariosMesVisible = new Date();
+let horariosDiaSeleccionadoISO = null;
+let funcionesDelDiaActual = [];
+let funcionAdminEnEdicion = null; // referencia completa a la función que se está editando, o null si es nueva
+let idiomaFuncionSeleccionado = 'Doblada';
 
-    // Aplana la estructura fecha -> [{formato, horas}] en una lista de trabajo plana
-    horariosPendientesModal = [];
-    Object.entries(pelicula.horarios || {}).forEach(([fecha, funciones]) => {
-        funciones.forEach(funcion => {
-            (funcion.horas || []).forEach(horaRaw => {
-                const { hora, sala } = normalizarFuncionHorario(horaRaw);
-                horariosPendientesModal.push({ fecha, formato: funcion.formato, hora, sala });
+function obtenerFechaISOHoy() {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+}
+
+/** Junta, para cada fecha ISO, todas las funciones programadas en cualquier película (calendario + agenda). */
+function obtenerFuncionesAgrupadasPorFechaISO() {
+    const mapa = {};
+    Object.values(baseDatosPeliculas).forEach(pelicula => {
+        Object.keys(pelicula.horarios || {}).forEach(etiqueta => {
+            const fechaISO = resolverFechaISODeEtiqueta(etiqueta);
+            if (!fechaISO) return;
+            (pelicula.horarios[etiqueta] || []).forEach((grupo, indiceGrupo) => {
+                (grupo.horas || []).forEach((horaRaw, indiceHora) => {
+                    const { hora, sala } = normalizarFuncionHorario(horaRaw);
+                    if (!mapa[fechaISO]) mapa[fechaISO] = [];
+                    mapa[fechaISO].push({
+                        peliculaId: pelicula.id, peliculaTitulo: pelicula.titulo, poster: pelicula.poster,
+                        duracionMinutos: duracionAMinutos(pelicula.duracion),
+                        etiquetaFecha: etiqueta, fechaISO,
+                        formato: grupo.formato, formatoId: grupo.formatoId || resolverFormatoIdDesdeTexto(grupo.formato),
+                        idioma: grupo.idioma || (grupo.formato && grupo.formato.includes('Subtitulada') ? 'Subtitulada' : 'Doblada'),
+                        hora, sala: Number(sala), indiceGrupo, indiceHora
+                    });
+                });
             });
         });
     });
+    Object.keys(mapa).forEach(fecha => mapa[fecha].sort((a, b) => a.hora.localeCompare(b.hora)));
+    return mapa;
+}
 
-    renderizarListaHorariosPendientes();
+/** Convierte texto legado de formato ("SALA XD", "D-BOX", "2D Subtitulada"...) al id del catálogo más parecido. Fallback: '2d'. */
+function resolverFormatoIdDesdeTexto(formatoTexto) {
+    const texto = String(formatoTexto || '').toUpperCase();
+    const coincidencia = obtenerCatalogoFormatos().find(f => texto.includes(f.nombre.toUpperCase()));
+    return coincidencia ? coincidencia.id : '2d';
+}
 
-    document.getElementById('horario-nuevo-fecha').value = '';
-    document.getElementById('horario-nuevo-hora').value = '';
-    document.getElementById('horario-nuevo-aviso').classList.add('hidden');
-    inicializarChipsFormatoHorario();
-    poblarSelectSalasDisponibles(document.getElementById('horario-nuevo-sala'), new Set(), 1);
+function renderizarAdminHorarios() {
+    if (!horariosDiaSeleccionadoISO) horariosDiaSeleccionadoISO = obtenerFechaISOHoy();
+    horariosMesVisible = new Date(horariosDiaSeleccionadoISO + 'T00:00:00');
+    seleccionarDiaHorarios(horariosDiaSeleccionadoISO);
+}
 
-    const modal = document.getElementById('modal-horarios-pelicula');
-    modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('horarios-pelicula-contenido').classList.remove('scale-95'); }, 10);
+/* ---------- Datepicker flotante ---------- */
+let datepickerAbierto = false;
+
+window.toggleDatepickerHorarios = () => {
+    datepickerAbierto = !datepickerAbierto;
+    const dropdown = document.getElementById('datepicker-dropdown');
+    if (datepickerAbierto) {
+        renderizarDatepicker();
+        dropdown.classList.add('visible');
+        // Cerrar al hacer click fuera
+        setTimeout(() => document.addEventListener('click', cerrarDatepickerFuera), 0);
+    } else {
+        dropdown.classList.remove('visible');
+        document.removeEventListener('click', cerrarDatepickerFuera);
+    }
 };
 
-window.cerrarModalHorarios = () => {
-    const modal = document.getElementById('modal-horarios-pelicula');
+function cerrarDatepickerFuera(e) {
+    const contenedor = document.getElementById('datepicker-horarios');
+    if (!contenedor.contains(e.target)) {
+        datepickerAbierto = false;
+        document.getElementById('datepicker-dropdown').classList.remove('visible');
+        document.removeEventListener('click', cerrarDatepickerFuera);
+    }
+}
+
+window.datepickerCambiarMes = (delta) => {
+    horariosMesVisible.setMonth(horariosMesVisible.getMonth() + delta);
+    renderizarDatepicker();
+};
+
+function renderizarDatepicker() {
+    const funcionesPorFecha = obtenerFuncionesAgrupadasPorFechaISO();
+    const anio = horariosMesVisible.getFullYear();
+    const mes = horariosMesVisible.getMonth();
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+    document.getElementById('dp-mes-titulo').textContent = `${meses[mes]} ${anio}`;
+
+    const primerDiaSemana = new Date(anio, mes, 1).getDay();
+    const diasEnMes = new Date(anio, mes + 1, 0).getDate();
+    const hoyISO = obtenerFechaISOHoy();
+
+    let html = '';
+    // Días del mes anterior (relleno)
+    const diasMesAnterior = new Date(anio, mes, 0).getDate();
+    for (let i = primerDiaSemana - 1; i >= 0; i--) {
+        html += `<button type="button" class="dp-dia dp-otro-mes" disabled>${diasMesAnterior - i}</button>`;
+    }
+    // Días del mes actual
+    for (let dia = 1; dia <= diasEnMes; dia++) {
+        const fechaISO = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+        const tieneFunciones = (funcionesPorFecha[fechaISO] || []).length > 0;
+        const esSeleccionado = fechaISO === horariosDiaSeleccionadoISO;
+        const esHoy = fechaISO === hoyISO;
+        let clase = 'dp-dia';
+        if (esSeleccionado) clase += ' dp-seleccionado';
+        else if (tieneFunciones) clase += ' dp-tiene-funciones';
+        if (esHoy && !esSeleccionado) clase += ' dp-hoy';
+        html += `<button type="button" class="${clase}" onclick="seleccionarDiaDesdeDP('${fechaISO}')">${dia}</button>`;
+    }
+    // Días del mes siguiente (relleno)
+    const totalCeldas = primerDiaSemana + diasEnMes;
+    const restantes = totalCeldas % 7 === 0 ? 0 : 7 - (totalCeldas % 7);
+    for (let i = 1; i <= restantes; i++) {
+        html += `<button type="button" class="dp-dia dp-otro-mes" disabled>${i}</button>`;
+    }
+    document.getElementById('dp-grid').innerHTML = html;
+}
+
+window.seleccionarDiaDesdeDP = (fechaISO) => {
+    seleccionarDiaHorarios(fechaISO);
+    datepickerAbierto = false;
+    document.getElementById('datepicker-dropdown').classList.remove('visible');
+    document.removeEventListener('click', cerrarDatepickerFuera);
+};
+
+/* ---------- Compatibilidad: mantener cambiarMesHorariosAdmin ---------- */
+window.cambiarMesHorariosAdmin = (delta) => {
+    datepickerCambiarMes(delta);
+};
+
+/* ---------- Selección de día y renderizado del grid ---------- */
+window.seleccionarDiaHorarios = (fechaISO) => {
+    horariosDiaSeleccionadoISO = fechaISO;
+    horariosMesVisible = new Date(fechaISO + 'T00:00:00');
+    funcionesDelDiaActual = obtenerFuncionesAgrupadasPorFechaISO()[fechaISO] || [];
+
+    // Actualizar label del datepicker
+    const fechaObj = new Date(fechaISO + 'T00:00:00');
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const mesesCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    document.getElementById('datepicker-label').textContent =
+        `${diasSemana[fechaObj.getDay()]}, ${fechaObj.getDate()} ${mesesCortos[fechaObj.getMonth()]} ${fechaObj.getFullYear()}`;
+
+    // Contador
+    const contadorEl = document.getElementById('grid-funciones-contador');
+    if (contadorEl) contadorEl.textContent = funcionesDelDiaActual.length > 0
+        ? `${funcionesDelDiaActual.length} función${funcionesDelDiaActual.length !== 1 ? 'es' : ''} programada${funcionesDelDiaActual.length !== 1 ? 's' : ''}`
+        : '';
+
+    renderizarGridHorarios();
+};
+
+/* ============================================================================
+   MÓDULO 10 — RENDERIZACIÓN DEL GRID DE HORARIOS (Matriz 2D)
+   ============================================================================ */
+
+const GRID_HORA_INICIO = 10; // 10:00 AM
+const GRID_HORA_FIN = 24;    // 00:00 (medianoche)
+const GRID_PX_POR_MINUTO = 2; // 1 minuto = 2px → 30 min = 60px
+
+/** Genera un array de slots de 30 min: ['10:00', '10:30', '11:00', ...] */
+function generarSlotsHorarios() {
+    const slots = [];
+    for (let h = GRID_HORA_INICIO; h < GRID_HORA_FIN; h++) {
+        slots.push(`${String(h).padStart(2, '0')}:00`);
+        slots.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    return slots;
+}
+
+/** Calcula top y height en px a partir de hora inicio y duración en minutos. */
+function calcularPosicionCard(horaStr, duracionMinutos) {
+    const minutosDesdeInicio = horaAMinutos(horaStr) - (GRID_HORA_INICIO * 60);
+    const top = minutosDesdeInicio * GRID_PX_POR_MINUTO;
+    const height = duracionMinutos * GRID_PX_POR_MINUTO;
+    return { top, height };
+}
+
+/** Renderiza la matriz completa: header + columnas con filas + tarjetas posicionadas. */
+function renderizarGridHorarios() {
+    const grid = document.getElementById('grid-horarios');
+    const slots = generarSlotsHorarios();
+    const totalFilas = slots.length;
+    const alturaTotalPx = totalFilas * 60; // cada slot = 60px
+
+    // --- Header: esquina + 8 salas ---
+    let html = '<div class="grid-horarios-header">';
+    html += '<div class="grid-horarios-header-cell"><i class="fa-regular fa-clock text-gray-600"></i></div>';
+    for (let s = 1; s <= NUMERO_TOTAL_SALAS; s++) {
+        const salaConfig = obtenerDatosSalas().salas.find(sc => Number(sc.id_sala.replace('sala_', '')) === s);
+        const formatos = (salaConfig && salaConfig.formatosSoportados) ? salaConfig.formatosSoportados : [];
+        const formatosTexto = formatos.map(fid => {
+            const f = obtenerFormatoPorId(fid);
+            return f ? f.nombre : fid;
+        }).join(' · ');
+        html += `<div class="grid-horarios-header-cell">Sala ${s}${formatosTexto ? `<span class="sala-formato-tag">${formatosTexto}</span>` : ''}</div>`;
+    }
+    html += '</div>';
+
+    // --- Filas de tiempo + columnas de sala ---
+    for (let i = 0; i < slots.length; i++) {
+        const horaLabel = slots[i];
+        const esFila00 = horaLabel.endsWith(':00');
+        // Columna de hora (sticky)
+        html += `<div class="grid-hora-label" style="grid-row: ${i + 2}">${esFila00 ? horaLabel : ''}</div>`;
+        // 8 columnas de sala (celdas vacías con ghost button)
+        for (let s = 1; s <= NUMERO_TOTAL_SALAS; s++) {
+            html += `<div class="grid-fila-hora" style="grid-row: ${i + 2}" data-sala="${s}" data-hora="${horaLabel}">`;
+            html += `<div class="grid-slot-vacio"><button type="button" class="ghost-add-btn" onclick="abrirModalFuncionDesdeGrid(${s}, '${horaLabel}')" title="Agregar función en Sala ${s} a las ${horaLabel}"><i class="fa-solid fa-plus"></i></button></div>`;
+            html += '</div>';
+        }
+    }
+
+    grid.innerHTML = html;
+
+    // --- Colocar tarjetas posicionadas sobre las columnas ---
+    renderizarTarjetasEnGrid(slots);
+
+    // --- Línea de hora actual ---
+    renderizarLineaHoraActual();
+}
+
+/** Renderiza las tarjetas de funciones posicionadas absolutamente dentro de sus columnas de sala. */
+function renderizarTarjetasEnGrid(slots) {
+    const grid = document.getElementById('grid-horarios');
+    // Necesitamos contenedores por sala para posicionar absolutamente las tarjetas
+    // Creamos un overlay por cada sala
+    for (let s = 1; s <= NUMERO_TOTAL_SALAS; s++) {
+        const overlay = document.createElement('div');
+        overlay.className = 'grid-sala-columna';
+        overlay.style.gridColumn = `${s + 1}`;
+        overlay.style.gridRow = `2 / ${slots.length + 2}`;
+        overlay.style.position = 'relative';
+        overlay.style.pointerEvents = 'none'; // los botones ghost debajo siguen clickeables
+
+        // Filtrar funciones de esta sala
+        const funcionesSala = funcionesDelDiaActual.filter(f => f.sala === s);
+
+        funcionesSala.forEach((f, idx) => {
+            const pelicula = baseDatosPeliculas[f.peliculaId];
+            const tipoLanzamiento = pelicula ? (pelicula.tipoLanzamiento || 'Regular') : 'Regular';
+            const duracion = f.duracionMinutos || 0;
+            const { top, height: alturaMovie } = calcularPosicionCard(f.hora, duracion);
+            const alturaLimpieza = MARGEN_LIMPIEZA_MINUTOS * GRID_PX_POR_MINUTO;
+            const alturaTotal = alturaMovie + alturaLimpieza;
+
+            // Calcular hora de fin
+            const minutosInicio = horaAMinutos(f.hora);
+            const minutosFin = minutosInicio + duracion;
+            const horaFin = `${String(Math.floor(minutosFin / 60) % 24).padStart(2, '0')}:${String(minutosFin % 60).padStart(2, '0')}`;
+
+            // Clase de tipo
+            let clasesTipo = 'tipo-regular';
+            let tagTipo = '';
+            if (tipoLanzamiento === 'Estreno') {
+                clasesTipo = 'tipo-estreno';
+                tagTipo = '<span class="grid-funcion-card-tag tag-estreno">ESTRENO</span>';
+            } else if (tipoLanzamiento === 'Pre-Estreno') {
+                clasesTipo = 'tipo-pre-estreno';
+                tagTipo = '<span class="grid-funcion-card-tag tag-pre-estreno">PRE-ESTRENO</span>';
+            }
+
+            // Encontrar el índice en funcionesDelDiaActual para pasar al modal
+            const indiceGlobal = funcionesDelDiaActual.indexOf(f);
+
+            // Formato abreviado
+            const formatoCorto = f.formato ? f.formato.replace('Doblada', 'DOB').replace('Subtitulada', 'SUB') : '';
+
+            const card = document.createElement('div');
+            card.className = `grid-funcion-card ${clasesTipo}`;
+            card.style.top = `${top}px`;
+            card.style.height = `${alturaTotal}px`;
+            card.style.pointerEvents = 'auto';
+            card.style.animationDelay = `${idx * 0.04}s`;
+
+            card.innerHTML = `
+                <div class="grid-funcion-card-acciones">
+                    <button type="button" class="btn-editar" onclick="event.stopPropagation(); abrirModalFuncion(${indiceGlobal})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                    <button type="button" class="btn-eliminar" onclick="event.stopPropagation(); eliminarFuncionAdmin(${indiceGlobal})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
+                </div>
+                <div class="grid-funcion-card-body">
+                    <p class="grid-funcion-card-hora">${f.hora} – ${horaFin}</p>
+                    <p class="grid-funcion-card-titulo">${f.peliculaTitulo}</p>
+                    <div class="grid-funcion-card-tags">
+                        ${tagTipo}
+                        <span class="grid-funcion-card-tag">${formatoCorto}</span>
+                    </div>
+                </div>
+                <div class="grid-funcion-limpieza" style="height: ${alturaLimpieza}px">
+                    ${alturaLimpieza >= 20 ? '<span class="grid-funcion-limpieza-label">Limpieza</span>' : ''}
+                </div>
+            `;
+
+            card.addEventListener('click', () => abrirModalFuncion(indiceGlobal));
+            overlay.appendChild(card);
+        });
+
+        grid.appendChild(overlay);
+    }
+}
+
+/** Dibuja una línea roja indicando la hora actual (solo si el día seleccionado es hoy). */
+function renderizarLineaHoraActual() {
+    if (horariosDiaSeleccionadoISO !== obtenerFechaISOHoy()) return;
+    const ahora = new Date();
+    const minutosActuales = ahora.getHours() * 60 + ahora.getMinutes();
+    const minutosDesdeInicio = minutosActuales - (GRID_HORA_INICIO * 60);
+    if (minutosDesdeInicio < 0 || minutosDesdeInicio > (GRID_HORA_FIN - GRID_HORA_INICIO) * 60) return;
+
+    const topPx = minutosDesdeInicio * GRID_PX_POR_MINUTO;
+
+    // Insertar una línea en cada columna de sala + la de horas
+    for (let s = 0; s <= NUMERO_TOTAL_SALAS; s++) {
+        const linea = document.createElement('div');
+        linea.className = 'grid-linea-ahora';
+        linea.style.top = `${topPx}px`;
+        if (s === 0) {
+            // En la columna de horas: posicionar sobre el grid general
+            linea.style.gridColumn = '1';
+            linea.style.position = 'absolute';
+        }
+    }
+
+    // Alternativa más sencilla: una única línea que cruza todo el grid
+    const wrapper = document.getElementById('grid-horarios-wrapper');
+    const lineaGlobal = document.createElement('div');
+    lineaGlobal.className = 'grid-linea-ahora';
+    // Calculamos la posición relativa al wrapper considerando el header (aprox 44px)
+    lineaGlobal.style.top = `${topPx + 44}px`;
+    lineaGlobal.style.position = 'absolute';
+    lineaGlobal.style.left = '0';
+    lineaGlobal.style.right = '0';
+    wrapper.appendChild(lineaGlobal);
+}
+
+/** Abre el modal de función precargado con la sala y hora del slot donde se hizo click. */
+window.abrirModalFuncionDesdeGrid = (sala, hora) => {
+    // Abrir modal en modo "nueva función"
+    abrirModalFuncion(null);
+    // Precargar la fecha del día seleccionado
+    setTimeout(() => {
+        const inputFecha = document.getElementById('funcion-fecha');
+        const inputHora = document.getElementById('funcion-hora');
+        if (inputFecha) inputFecha.value = horariosDiaSeleccionadoISO;
+        if (inputHora) inputHora.value = hora;
+        // Disparar el recálculo de salas disponibles
+        alCambiarDatosFuncion();
+        // Preseleccionar la sala si está disponible
+        setTimeout(() => {
+            const selectSala = document.getElementById('funcion-sala');
+            if (selectSala) {
+                const opcion = selectSala.querySelector(`option[value="${sala}"]`);
+                if (opcion && !opcion.disabled) selectSala.value = sala;
+            }
+        }, 50);
+    }, 100);
+};
+
+/* ---------- Compatibilidad: renderizarAgendaHorariosAdmin (ya no se usa, pero otras partes la llaman) ---------- */
+function renderizarAgendaHorariosAdmin() {
+    // El grid ahora reemplaza la agenda, pero mantenemos la función para compatibilidad
+    renderizarGridHorarios();
+}
+
+/* ---------- Compatibilidad: renderizarCalendarioHorariosAdmin ---------- */
+function renderizarCalendarioHorariosAdmin() {
+    // Ahora el datepicker flotante reemplaza el calendario grande
+    renderizarDatepicker();
+}
+
+/** Navegación directa desde Cartelera: abre Horarios en el día más próximo con función de esa película (o hoy, si aún no tiene ninguna). */
+window.irAHorariosDeEstaPelicula = (peliculaId) => {
+    const funcionesPorFecha = obtenerFuncionesAgrupadasPorFechaISO();
+    const fechas = Object.keys(funcionesPorFecha).filter(f => funcionesPorFecha[f].some(x => x.peliculaId === peliculaId)).sort();
+    horariosDiaSeleccionadoISO = fechas[0] || obtenerFechaISOHoy();
+    cambiarTabAdmin('horarios');
+};
+
+/* --- Modal Agregar/Editar función --- */
+
+window.abrirModalFuncion = (indice = null) => {
+    const peliculas = Object.values(baseDatosPeliculas);
+    if (peliculas.length === 0) {
+        mostrarToast('Primero agrega una película en Cartelera.', 'error');
+        return;
+    }
+    funcionAdminEnEdicion = (indice !== null) ? funcionesDelDiaActual[indice] : null;
+
+    const selectPelicula = document.getElementById('funcion-pelicula');
+    selectPelicula.innerHTML = peliculas.map(p => `<option value="${p.id}">${p.titulo}</option>`).join('');
+    selectPelicula.value = funcionAdminEnEdicion ? funcionAdminEnEdicion.peliculaId : peliculas[0].id;
+
+    document.getElementById('funcion-fecha').value = funcionAdminEnEdicion ? funcionAdminEnEdicion.fechaISO : horariosDiaSeleccionadoISO;
+    document.getElementById('funcion-hora').value = funcionAdminEnEdicion ? funcionAdminEnEdicion.hora : '';
+    idiomaFuncionSeleccionado = funcionAdminEnEdicion ? funcionAdminEnEdicion.idioma : 'Doblada';
+
+    document.getElementById('funcion-modal-titulo').textContent = funcionAdminEnEdicion ? 'Editar función' : 'Agregar función';
+    document.getElementById('funcion-btn-eliminar').classList.toggle('hidden', !funcionAdminEnEdicion);
+
+    alCambiarPeliculaFuncion(funcionAdminEnEdicion ? funcionAdminEnEdicion.formatoId : null);
+
+    const modal = document.getElementById('modal-funcion');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('funcion-contenido').classList.remove('scale-95'); }, 10);
+};
+
+window.cerrarModalFuncion = () => {
+    const modal = document.getElementById('modal-funcion');
     modal.classList.add('opacity-0');
-    document.getElementById('horarios-pelicula-contenido').classList.add('scale-95');
+    document.getElementById('funcion-contenido').classList.add('scale-95');
     setTimeout(() => modal.classList.add('hidden'), 200);
+    funcionAdminEnEdicion = null;
 };
 
-/** Abre el gestor antes de guardar una película nueva y conserva sus funciones como borrador. */
-window.abrirCrearFuncionesNuevaPelicula = () => {
-    const titulo = document.getElementById('admin-pelicula-titulo');
-    const duracion = document.getElementById('admin-pelicula-duracion');
-    const esEstreno = document.getElementById('admin-pelicula-es-estreno').checked;
-    if (esEstreno) {
-        mostrarToast('Los próximos estrenos no requieren funciones. Desactiva el switch para programarlas.', 'info');
-        return;
-    }
-    if (!Validadores.minLength(titulo.value, 2)) {
-        validarFormulario([{ input: titulo, prueba: () => Validadores.minLength(titulo.value, 2), mensaje: 'Ingresa el título antes de crear funciones.' }]);
-        return;
-    }
-    if (duracionAMinutos(duracion.value) <= 0) {
-        validarFormulario([{ input: duracion, prueba: () => duracionAMinutos(duracion.value) > 0, mensaje: 'Ingresa la duración antes de crear funciones (la necesitamos para el margen de limpieza entre funciones).' }]);
-        return;
-    }
-    gestorHorariosEsBorrador = true;
-    document.getElementById('horarios-pelicula-id').value = '';
-    document.getElementById('horarios-pelicula-titulo').textContent = `${titulo.value.trim()} — funciones por guardar`;
-    horariosPendientesModal = funcionesBorradorNuevaPelicula.map(h => ({ ...h }));
-    renderizarListaHorariosPendientes();
-    document.getElementById('horario-nuevo-fecha').value = '';
-    document.getElementById('horario-nuevo-hora').value = '';
-    document.getElementById('horario-nuevo-aviso').classList.add('hidden');
-    inicializarChipsFormatoHorario();
-    poblarSelectSalasDisponibles(document.getElementById('horario-nuevo-sala'), new Set(), 1);
-    const modal = document.getElementById('modal-horarios-pelicula');
-    modal.classList.remove('hidden');
-    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('horarios-pelicula-contenido').classList.remove('scale-95'); }, 10);
+window.alCambiarPeliculaFuncion = (formatoIdPreseleccionado = null) => {
+    const pelicula = baseDatosPeliculas[document.getElementById('funcion-pelicula').value];
+    const catalogo = obtenerCatalogoFormatos();
+    const formatosDeLaPelicula = (pelicula.formatosDisponibles && pelicula.formatosDisponibles.length > 0) ? pelicula.formatosDisponibles : catalogo.map(f => f.id);
+
+    const selectFormato = document.getElementById('funcion-formato');
+    selectFormato.innerHTML = formatosDeLaPelicula.map(id => {
+        const f = obtenerFormatoPorId(id);
+        return f ? `<option value="${f.id}">${f.nombre}${f.recargo > 0 ? ` (+S/ ${f.recargo.toFixed(2)})` : ''}</option>` : '';
+    }).join('');
+    if (formatoIdPreseleccionado && formatosDeLaPelicula.includes(formatoIdPreseleccionado)) selectFormato.value = formatoIdPreseleccionado;
+
+    renderizarChipsIdiomaFuncion();
+    alCambiarDatosFuncion();
 };
 
-/** Reconstruye el objeto horarios{fecha: [{formato,horas}]} desde la lista de trabajo y lo persiste. */
-window.guardarHorariosPelicula = () => {
-    if (horariosPendientesModal.length === 0) {
-        mostrarToast('Debes dejar al menos un horario programado para esta película.', 'error');
+function renderizarChipsIdiomaFuncion() {
+    document.getElementById('funcion-idioma-chips').innerHTML = ['Doblada', 'Subtitulada'].map(idioma => `
+        <button type="button" onclick="seleccionarIdiomaFuncion('${idioma}')" class="flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${idiomaFuncionSeleccionado === idioma ? 'bg-brand-yellow text-black border-brand-yellow' : 'bg-dark-900 text-gray-300 border-white/10 hover:border-white/30'}">${idioma}</button>
+    `).join('');
+}
+
+window.seleccionarIdiomaFuncion = (idioma) => {
+    idiomaFuncionSeleccionado = idioma;
+    renderizarChipsIdiomaFuncion();
+};
+
+window.alCambiarDatosFuncion = () => {
+    const pelicula = baseDatosPeliculas[document.getElementById('funcion-pelicula').value];
+    const formatoId = document.getElementById('funcion-formato').value;
+    const fechaISO = document.getElementById('funcion-fecha').value;
+    const hora = document.getElementById('funcion-hora').value;
+    const duracionMinutos = duracionAMinutos(pelicula.duracion);
+    const fechaAmigable = fechaISO ? formatearFechaAmigable(fechaISO) : null;
+
+    const ocupadas = (fechaAmigable && hora)
+        ? calcularSalasOcupadasEnFechaHora(fechaAmigable, hora, duracionMinutos, funcionAdminEnEdicion)
+        : new Set();
+
+    const numerosCompatibles = obtenerDatosSalas().salas
+        .filter(s => (s.formatosSoportados || []).includes(formatoId))
+        .map(s => Number(s.id_sala.replace('sala_', '')));
+
+    let html = '';
+    for (let i = 1; i <= NUMERO_TOTAL_SALAS; i++) {
+        if (!numerosCompatibles.includes(i)) continue;
+        const bloqueada = ocupadas.has(i);
+        html += `<option value="${i}" ${bloqueada ? 'disabled' : ''} ${funcionAdminEnEdicion && i === funcionAdminEnEdicion.sala && !bloqueada ? 'selected' : ''}>Sala ${i}${bloqueada ? ' (ocupada)' : ''}</option>`;
+    }
+    document.getElementById('funcion-sala').innerHTML = html || '<option value="">Ninguna sala soporta este formato</option>';
+
+    document.getElementById('funcion-sala-ayuda').textContent = numerosCompatibles.length === 0
+        ? 'Ninguna sala tiene habilitado este formato (revisa Admin > Salas).'
+        : 'Solo se muestran salas habilitadas para este formato; las ocupadas en ese horario aparecen bloqueadas.';
+};
+
+window.guardarFuncionAdmin = async (e) => {
+    e.preventDefault();
+    const peliculaId = document.getElementById('funcion-pelicula').value;
+    const pelicula = baseDatosPeliculas[peliculaId];
+    const fechaISO = document.getElementById('funcion-fecha').value;
+    const hora = document.getElementById('funcion-hora').value;
+    const formatoId = document.getElementById('funcion-formato').value;
+    const sala = Number(document.getElementById('funcion-sala').value);
+
+    if (!fechaISO || !hora || !formatoId || !sala) {
+        mostrarToast('Completa fecha, hora, formato y sala.', 'error');
+        return;
+    }
+    const fechaAmigable = formatearFechaAmigable(fechaISO);
+    const duracionMinutos = duracionAMinutos(pelicula.duracion);
+
+    const ocupadas = calcularSalasOcupadasEnFechaHora(fechaAmigable, hora, duracionMinutos, funcionAdminEnEdicion);
+    if (ocupadas.has(sala)) {
+        mostrarToast('Esa sala ya tiene otra función en ese horario (con el margen de limpieza de 30 min).', 'error');
+        return;
+    }
+    const salaConfig = obtenerDatosSalas().salas.find(s => Number(s.id_sala.replace('sala_', '')) === sala);
+    if (!salaConfig || !(salaConfig.formatosSoportados || []).includes(formatoId)) {
+        mostrarToast('Esa sala no soporta el formato elegido.', 'error');
         return;
     }
 
-    if (gestorHorariosEsBorrador) {
-        funcionesBorradorNuevaPelicula = horariosPendientesModal.map(h => ({ ...h }));
-        cerrarModalHorarios();
-        mostrarToast('Funciones preparadas. Ahora confirma con “Agregar a Cartelera”.', 'exito');
-        return;
-    }
+    const confirmado = await confirmarAccion({
+        titulo: funcionAdminEnEdicion ? '¿Guardar cambios?' : '¿Agregar función?',
+        mensaje: funcionAdminEnEdicion ? `Se actualizará la función en Sala ${sala} a las ${hora}.` : `Se agregará una nueva función en Sala ${sala} a las ${hora}.`,
+        tipo: 'info',
+        textoConfirmar: funcionAdminEnEdicion ? 'Sí, guardar' : 'Sí, agregar'
+    });
+    if (!confirmado) return;
 
-    const id = document.getElementById('horarios-pelicula-id').value;
-    const pelicula = baseDatosPeliculas[id];
-    if (!pelicula) { cerrarModalHorarios(); return; }
-    pelicula.horarios = construirHorariosDesdeLista(horariosPendientesModal);
+    if (funcionAdminEnEdicion) quitarFuncionDeEstructura(funcionAdminEnEdicion);
+
+    const formatoInfo = obtenerFormatoPorId(formatoId);
+    const formatoTexto = `${formatoInfo ? formatoInfo.nombre : formatoId} ${idiomaFuncionSeleccionado}`;
+
+    if (!pelicula.horarios) pelicula.horarios = {};
+    if (!pelicula.horarios[fechaAmigable]) pelicula.horarios[fechaAmigable] = [];
+    let grupo = pelicula.horarios[fechaAmigable].find(g =>
+        (g.formatoId || resolverFormatoIdDesdeTexto(g.formato)) === formatoId && (g.idioma || 'Doblada') === idiomaFuncionSeleccionado);
+    if (!grupo) {
+        grupo = { formato: formatoTexto, formatoId, idioma: idiomaFuncionSeleccionado, horas: [] };
+        pelicula.horarios[fechaAmigable].push(grupo);
+    }
+    grupo.horas.push({ hora, sala });
+
     guardarCarteleraEnStorage();
-    renderizarAdminCartelera();
-    renderizarGridsInicio();
-    cerrarModalHorarios();
-    mostrarToast('Horarios actualizados correctamente.', 'exito');
+    cerrarModalFuncion();
+    horariosDiaSeleccionadoISO = fechaISO;
+    renderizarAdminHorarios();
+    mostrarToast(funcionAdminEnEdicion ? 'Función actualizada.' : 'Función agregada.', 'exito');
 };
 
-/** Puente desde el modal "Editar Película": cierra ese modal y abre el gestor de horarios de la misma película. */
-window.abrirHorariosDesdeEdicion = () => {
-    const id = document.getElementById('edit-pelicula-id').value;
-    cerrarModalEditarPelicula();
-    setTimeout(() => abrirModalHorarios(id), 220); // espera a que termine la animación de cierre
+window.eliminarFuncionAdminActual = () => {
+    if (!funcionAdminEnEdicion) return;
+    const referencia = funcionAdminEnEdicion;
+    cerrarModalFuncion();
+    quitarFuncionDeEstructura(referencia);
+    guardarCarteleraEnStorage();
+    renderizarAdminHorarios();
+    mostrarToast('Función eliminada.', 'exito');
 };
 
+window.eliminarFuncionAdmin = async (indice) => {
+    const f = funcionesDelDiaActual[indice];
+    if (!f) return;
+    const confirmado = await confirmarAccion({
+        titulo: '¿Eliminar función?',
+        mensaje: `${f.peliculaTitulo} — ${f.hora}, Sala ${f.sala}. Las entradas ya vendidas para esta función no se eliminan.`,
+        tipo: 'peligro', textoConfirmar: 'Sí, eliminar', textoCancelar: 'Cancelar'
+    });
+    if (!confirmado) return;
+    quitarFuncionDeEstructura(f);
+    guardarCarteleraEnStorage();
+    renderizarAdminHorarios();
+    mostrarToast('Función eliminada.', 'exito');
+};
+
+/** Quita una función concreta de pelicula.horarios (limpia el grupo y la fecha si quedan vacíos). */
+function quitarFuncionDeEstructura(ref) {
+    const pelicula = baseDatosPeliculas[ref.peliculaId];
+    if (!pelicula || !pelicula.horarios || !pelicula.horarios[ref.etiquetaFecha]) return;
+    const grupos = pelicula.horarios[ref.etiquetaFecha];
+    const grupo = grupos[ref.indiceGrupo];
+    if (!grupo) return;
+    grupo.horas.splice(ref.indiceHora, 1);
+    if (grupo.horas.length === 0) grupos.splice(ref.indiceGrupo, 1);
+    if (grupos.length === 0) delete pelicula.horarios[ref.etiquetaFecha];
+}
+
+/**
+ * MÓDULO 9: salas ocupadas en una fecha+hora, cruzando TODAS las películas — incluida la misma
+ * película en otro horario ese día (el viejo obtenerSalasOcupadas ignoraba por completo los
+ * demás horarios de la propia película, dejando pasar choques consigo misma). `excluir` es la
+ * función que se está editando, para no chocar contra sí misma al moverla.
+ */
+function calcularSalasOcupadasEnFechaHora(fechaAmigable, hora, duracionMinutos, excluir = null) {
+    const ocupadas = new Set();
+    const inicioNueva = horaAMinutos(hora);
+    if (inicioNueva === null) return ocupadas;
+    const finNueva = inicioNueva + (duracionMinutos || 0) + MARGEN_LIMPIEZA_MINUTOS;
+
+    Object.values(baseDatosPeliculas).forEach(p => {
+        const funciones = (p.horarios && p.horarios[fechaAmigable]) || [];
+        const duracionExistente = duracionAMinutos(p.duracion);
+        funciones.forEach((grupo, indiceGrupo) => {
+            (grupo.horas || []).forEach((horaRaw, indiceHora) => {
+                if (excluir && excluir.peliculaId === p.id && excluir.etiquetaFecha === fechaAmigable && excluir.indiceGrupo === indiceGrupo && excluir.indiceHora === indiceHora) return;
+                const { hora: h, sala } = normalizarFuncionHorario(horaRaw);
+                const inicioExistente = horaAMinutos(h);
+                if (inicioExistente === null) return;
+                const finExistente = inicioExistente + duracionExistente + MARGEN_LIMPIEZA_MINUTOS;
+                if (inicioNueva < finExistente && inicioExistente < finNueva) ocupadas.add(Number(sala));
+            });
+        });
+    });
+    return ocupadas;
+}
 
 // --- 15.1 Cartelera: CRUD avanzado (persistente, con imágenes y edición) ---
 function renderizarAdminCartelera() {
@@ -574,7 +944,7 @@ function renderizarAdminCartelera() {
                 </div>
             </div>
             <div class="flex items-center gap-3 flex-shrink-0">
-                <button onclick="abrirModalHorarios('${p.id}')" class="text-gray-500 hover:text-brand-yellow transition-colors" title="Horarios"><i class="fa-solid fa-calendar-days"></i></button>
+                <button onclick="irAHorariosDeEstaPelicula('${p.id}')" class="text-gray-500 hover:text-brand-yellow transition-colors" title="Ver funciones en Horarios"><i class="fa-solid fa-calendar-days"></i></button>
                 <button onclick="abrirModalEditarPelicula('${p.id}', 'cartelera')" class="text-gray-500 hover:text-brand-yellow transition-colors" title="Editar"><i class="fa-solid fa-pen"></i></button>
                 <button onclick="eliminarPeliculaAdmin('${p.id}', 'cartelera')" class="text-gray-500 hover:text-brand-red transition-colors" title="Eliminar"><i class="fa-solid fa-trash"></i></button>
             </div>
@@ -727,12 +1097,23 @@ window.crearPeliculaAdmin = async (e) => {
     const valido = validarFormulario([
         { input: titulo, prueba: () => Validadores.minLength(titulo.value, 2), mensaje: 'Ingresa el título de la película.' },
         { input: document.getElementById('admin-pelicula-genero-chips'), prueba: () => genero.value.trim().length > 0, mensaje: 'Elige al menos un género.' },
-        { input: duracion, prueba: () => duracionAMinutos(duracion.value) > 0, mensaje: 'Ingresa la duración (ej: 02h 10m).' }
+        { input: duracion, prueba: () => duracionAMinutos(duracion.value) > 0, mensaje: 'Ingresa una duración válida (ej: 2h 15m).' }
     ]);
     if (!valido) return;
 
-    if (!esEstreno && funcionesBorradorNuevaPelicula.length === 0) {
-        mostrarToast('Antes de agregar una película de cartelera, usa “Crear Funciones” y guarda al menos una función.', 'error');
+    const confirmado = await confirmarAccion({
+        titulo: '¿Agregar película?',
+        mensaje: `Se registrará "${titulo.value.trim()}" en el sistema.`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, agregar'
+    });
+    if (!confirmado) return;
+
+    // MÓDULO 9: qué formatos de proyección ofrece esta película (2D/3D/4DX/...). Determina en qué
+    // salas se le podrá programar función más adelante, desde el tab Horarios.
+    const formatosDisponibles = leerFormatosElegidosAdmin('admin-pelicula-formatos');
+    if (formatosDisponibles.length === 0) {
+        mostrarToast('Elige al menos un formato de proyección (2D, 3D, etc.).', 'error');
         return;
     }
 
@@ -750,16 +1131,19 @@ window.crearPeliculaAdmin = async (e) => {
         poster: imagen,
         banner: imagenBanner || imagen, // si no se cargó un banner propio, se sigue usando el póster (comportamiento anterior)
         sinopsis: sinopsis.value.trim() || 'Sinopsis pendiente de configurar.',
-        trailer: trailer.value.trim() || '#'
+        trailer: trailer.value.trim() || '#',
+        formatosDisponibles
     };
 
     if (esEstreno) {
         baseDatosEstrenos[id] = datosBase;
     } else {
+        // MÓDULO 9: ya no se piden funciones aquí — una película se puede crear sin horarios y
+        // programarlas cuando se quiera desde el tab "Horarios" (se desacopló a propósito).
         baseDatosPeliculas[id] = {
             ...datosBase,
             tipoLanzamiento: lanzamiento.value, // Módulo 3: solo aplica a películas ya en Cartelera
-            horarios: construirHorariosDesdeLista(funcionesBorradorNuevaPelicula)
+            horarios: {}
         };
     }
 
@@ -772,11 +1156,11 @@ window.crearPeliculaAdmin = async (e) => {
     document.getElementById('admin-pelicula-banner-url').classList.remove('hidden'); // NUEVO: reset del campo de banner
     document.getElementById('admin-pelicula-banner-archivo').classList.add('hidden');
     renderizarSelectorChipsMultiple('admin-pelicula-genero-chips', 'admin-pelicula-genero', GENEROS_DISPONIBLES, ''); // Módulo 3: limpia los chips tras guardar
-    funcionesBorradorNuevaPelicula = [];
+    pintarCheckboxesFormatosAdmin('admin-pelicula-formatos', []); // MÓDULO 9: limpia los checkboxes de formato tras guardar
     actualizarTipoPeliculaAdmin();
     actualizarPreviewImagenAdmin('admin-pelicula-preview', ''); // FASE 8: limpia la vista previa tras guardar
     actualizarPreviewImagenAdmin('admin-pelicula-banner-preview', ''); // NUEVO: limpia la vista previa del banner
-    mostrarToast(esEstreno ? 'Estreno agregado correctamente.' : 'Película y funciones agregadas a la cartelera.', 'exito');
+    mostrarToast(esEstreno ? 'Estreno agregado correctamente.' : 'Película agregada a la cartelera. Ahora puedes programarle funciones desde el tab "Horarios".', 'exito');
 };
 
 /** FASE 7: abre el modal de edición con los datos actuales de la película/estreno. */
@@ -810,8 +1194,12 @@ window.abrirModalEditarPelicula = (id, origen) => {
     alternarOrigenImagenBannerAdmin('edit-pelicula');
     actualizarPreviewImagenAdmin('edit-pelicula-banner-preview', pelicula.banner || '');
 
-    // FASE 12: "Editar Horarios" solo aplica a películas de Cartelera (los estrenos aún no tienen horarios)
+    // MÓDULO 9: qué formatos ofrece esta película (checkboxes contra el catálogo)
+    pintarCheckboxesFormatosAdmin('edit-pelicula-formatos', pelicula.formatosDisponibles || []);
+
+    // El acceso a "Horarios" solo aplica a películas ya en Cartelera (los estrenos aún no tienen funciones)
     document.getElementById('btn-editar-horarios-desde-edicion').classList.toggle('hidden', origen !== 'cartelera');
+    document.getElementById('btn-editar-horarios-desde-edicion').onclick = () => { cerrarModalEditarPelicula(); setTimeout(() => irAHorariosDeEstaPelicula(id), 220); };
 
     const modal = document.getElementById('modal-editar-pelicula');
     modal.classList.remove('hidden');
@@ -837,9 +1225,23 @@ window.guardarEdicionPeliculaAdmin = async (e) => {
     const valido = validarFormulario([
         { input: titulo, prueba: () => Validadores.minLength(titulo.value, 2), mensaje: 'Ingresa el título de la película.' },
         { input: document.getElementById('edit-pelicula-genero-chips'), prueba: () => genero.value.trim().length > 0, mensaje: 'Elige al menos un género.' },
-        { input: duracion, prueba: () => duracionAMinutos(duracion.value) > 0, mensaje: 'Ingresa la duración (ej: 02h 10m).' }
+        { input: duracion, prueba: () => duracionAMinutos(duracion.value) > 0, mensaje: 'Ingresa una duración válida.' }
     ]);
     if (!valido) return;
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Guardar cambios?',
+        mensaje: `Se actualizarán los datos de "${titulo.value.trim()}".`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, guardar'
+    });
+    if (!confirmado) return;
+
+    const formatosDisponibles = leerFormatosElegidosAdmin('edit-pelicula-formatos');
+    if (formatosDisponibles.length === 0) {
+        mostrarToast('Elige al menos un formato de proyección (2D, 3D, etc.).', 'error');
+        return;
+    }
 
     const imagenNueva = await obtenerImagenDesdeFormulario('edit-pelicula');
     const imagenBannerNueva = await obtenerImagenBannerDesdeFormulario('edit-pelicula'); // NUEVO
@@ -857,7 +1259,8 @@ window.guardarEdicionPeliculaAdmin = async (e) => {
         sinopsis: document.getElementById('edit-pelicula-sinopsis').value.trim(),
         trailer: document.getElementById('edit-pelicula-trailer').value.trim() || '#',
         poster: imagenNueva || peliculaOriginal.poster,
-        banner: imagenBannerNueva || peliculaOriginal.banner // NUEVO: ya no depende del póster
+        banner: imagenBannerNueva || peliculaOriginal.banner, // NUEVO: ya no depende del póster
+        formatosDisponibles
     };
     if (!esEstrenoAhora) datosActualizados.tipoLanzamiento = document.getElementById('edit-pelicula-lanzamiento').value; // Módulo 3
 
@@ -872,7 +1275,7 @@ window.guardarEdicionPeliculaAdmin = async (e) => {
             delete datosActualizados.tipoLanzamiento; // Módulo 3: no aplica a Próximos Estrenos
             baseDatosEstrenos[id] = datosActualizados;
         } else {
-            datosActualizados.horarios = peliculaOriginal.horarios || { 'Hoy, 26 Ago': [{ formato: '2D / Doblada', horas: [{ hora: '15:00', sala: 1 }] }] };
+            datosActualizados.horarios = peliculaOriginal.horarios || {}; // MÓDULO 9: sin función de relleno; se programan desde el tab Horarios
             baseDatosPeliculas[id] = datosActualizados;
         }
     } else {
@@ -1001,7 +1404,7 @@ window.actualizarCategoriasDulceriaAdmin = () => {
     mostrarToast('Categorías actualizadas.', 'info');
 };
 
-window.crearCategoriaDulceriaAdmin = (e) => {
+window.crearCategoriaDulceriaAdmin = async (e) => {
     e.preventDefault();
     const input = document.getElementById('admin-nueva-categoria-nombre');
     const nombre = input.value.trim();
@@ -1017,6 +1420,14 @@ window.crearCategoriaDulceriaAdmin = (e) => {
         mostrarToast('Ya existe una categoría con ese nombre.', 'error');
         return;
     }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Crear categoría?',
+        mensaje: `Se agregará "${nombre}" a las categorías de Dulcería.`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, crear'
+    });
+    if (!confirmado) return;
 
     categoriasDulceria.push({ id: `cat_${Date.now()}`, nombre });
     guardarCategoriasDulceriaEnStorage();
@@ -1079,6 +1490,14 @@ window.guardarProductoDulceriaAdmin = async (e) => {
         { input: precio, prueba: () => Number(precio.value) > 0, mensaje: 'El precio debe ser mayor a 0.' }
     ]);
     if (!valido) return;
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Crear producto?',
+        mensaje: `Se agregará "${nombre.value.trim()}" al catálogo de Dulcería.`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, crear'
+    });
+    if (!confirmado) return;
 
     const imagen = await obtenerImagenDesdeFormulario('dulce');
     if (!imagen) {
@@ -1157,6 +1576,14 @@ window.guardarEdicionDulceAdmin = async (e) => {
         mostrarToast('Este producto necesita una imagen (ya no se admite ícono FontAwesome).', 'error'); // Módulo 4
         return;
     }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Guardar cambios?',
+        mensaje: `Se actualizarán los datos de "${nombre.value.trim()}".`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, guardar'
+    });
+    if (!confirmado) return;
 
     PRECIOS.dulces[id] = {
         ...productoOriginal,
@@ -1257,24 +1684,69 @@ function renderizarAdminSalas() {
     document.getElementById('admin-sala-columnas').value = sala.columnas;
     const grid = document.getElementById('admin-grid-salas');
     grid.style.setProperty('--columnas-sala', sala.columnas);
-    const vendidas = obtenerButacasVendidasTotalPorSala(salaMantenimientoActual); // Módulo 4: solo informativo, ya no bloquea (FIX: ver utilidades.js)
+
+    // MÓDULO 9: qué butacas están comprometidas con una venta futura. Ya no se muestra ningún
+    // indicador visual en la matriz (el admin no necesita adivinar); si intenta tocarlas, el
+    // clic se bloquea y se explica el motivo (ver editarEstructuraButaca / cambiarEstadoButaca).
+    const bloqueadasPorVenta = obtenerButacasVendidasFuturasPorSala(salaMantenimientoActual);
     grid.innerHTML = sala.asientos.map(asiento => {
         const id = `${asiento.f}${asiento.c}`;
-        const esVendida = vendidas.has(id);
         if (asiento.estado === 'pasadizo') return `<button class="butaca-matriz pasadizo" onclick="editarEstructuraButaca('${id}')" title="Pasadizo"></button>`;
         const accion = pestanaSalaActiva === 'estructura' ? `editarEstructuraButaca('${id}', event)` : `cambiarEstadoButaca('${id}')`;
         const icono = asiento.estado === 'accesible' ? '<i class="fa-solid fa-wheelchair"></i>' : id;
-        const claseVendida = esVendida ? ' vendida-editable' : '';
-        const tituloVendida = esVendida ? ' (vendida — puedes editarla igual)' : '';
-        return `<button class="butaca-matriz ${asiento.estado}${claseVendida}" onclick="${accion}" title="${id}${tituloVendida}">${icono}</button>`;
+        return `<button class="butaca-matriz ${asiento.estado}" onclick="${accion}" title="${id}">${icono}</button>`;
     }).join('');
     actualizarContadorSala(sala);
+    renderizarFormatosSalaAdmin(sala);
+    renderizarAvisoBloqueoSala(bloqueadasPorVenta);
 
     const btnGuardar = document.getElementById('btn-guardar-cambios-sala');
     if (btnGuardar) btnGuardar.classList.toggle('boton-cambios-pendientes', haySalaCambiosSinGuardar);
 }
 
+/* MÓDULO 9: checkboxes de qué formatos soporta la sala seleccionada (se guardan en el borrador,
+   como el resto de la edición de sala: no se persisten hasta "Guardar Cambios"). */
+function renderizarFormatosSalaAdmin(sala) {
+    const contenedor = document.getElementById('admin-sala-formatos');
+    if (!contenedor) return;
+    const soportados = sala.formatosSoportados || [];
+    contenedor.innerHTML = obtenerCatalogoFormatos().map(f => `
+        <label class="flex items-center gap-1.5 bg-dark-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-gray-300 cursor-pointer hover:border-brand-yellow/50 transition-colors">
+            <input type="checkbox" value="${f.id}" onchange="toggleFormatoSalaAdmin('${f.id}', this.checked)" class="accent-brand-yellow" ${soportados.includes(f.id) ? 'checked' : ''}> ${f.nombre}
+        </label>
+    `).join('');
+}
+
+window.toggleFormatoSalaAdmin = (formatoId, marcado) => {
+    const sala = obtenerBorradorSalaActual();
+    if (!Array.isArray(sala.formatosSoportados)) sala.formatosSoportados = [];
+    if (marcado && !sala.formatosSoportados.includes(formatoId)) sala.formatosSoportados.push(formatoId);
+    if (!marcado) sala.formatosSoportados = sala.formatosSoportados.filter(id => id !== formatoId);
+    marcarSalaComoModificada();
+};
+
+/**
+ * MÓDULO 9 — POLÍTICA DE EDICIÓN DE SALAS:
+ * - Una butaca YA VENDIDA para una función futura nunca se toca (ni su estructura ni su estado):
+ *   evita invalidar o cambiar el precio de un ticket que un cliente ya compró.
+ * - "Generar Cuadrícula Base" (regenerar toda la sala) se bloquea si la sala tiene AL MENOS UNA
+ *   butaca vendida a futuro, porque podría eliminar o renumerar esa butaca comprometida.
+ * - Todo lo demás (butacas sin vender: estructura, mantenimiento, tipo, formatos soportados)
+ *   se sigue editando libre, aunque otras butacas de la misma sala sí tengan venta futura.
+ */
+function renderizarAvisoBloqueoSala(bloqueadasPorVenta) {
+    const aviso = document.getElementById('admin-sala-bloqueo-aviso');
+    if (!aviso) return;
+    if (bloqueadasPorVenta.size === 0) { aviso.classList.add('hidden'); return; }
+    aviso.classList.remove('hidden');
+    aviso.innerHTML = `<i class="fa-solid fa-lock mr-1"></i><b>${bloqueadasPorVenta.size} butaca(s)</b> tienen una venta para una función futura y no se pueden editar. "Generar Cuadrícula Base" también está bloqueado mientras existan.`;
+}
+
 window.generarMatriz = async () => {
+    if (obtenerButacasVendidasFuturasPorSala(salaMantenimientoActual).size > 0) {
+        mostrarToast('No se puede regenerar la cuadrícula: esta sala tiene butacas vendidas para funciones futuras.', 'error');
+        return;
+    }
     const filas = Number(document.getElementById('admin-sala-filas').value);
     const columnas = Number(document.getElementById('admin-sala-columnas').value);
     if (!Number.isInteger(filas) || filas < 1 || filas > 26 || !Number.isInteger(columnas) || columnas < 1 || columnas > 30) {
@@ -1311,6 +1783,10 @@ window.clickMatrizEstructura = (event) => {
 window.editarEstructuraButaca = (id, event) => {
     if (event) event.stopPropagation();
     if (pestanaSalaActiva !== 'estructura') return;
+    if (obtenerButacasVendidasFuturasPorSala(salaMantenimientoActual).has(id)) {
+        mostrarToast(`La butaca ${id} tiene una venta para una función futura; no se puede editar.`, 'error');
+        return;
+    }
     const sala = obtenerBorradorSalaActual();
     const asiento = sala.asientos.find(item => `${item.f}${item.c}` === id);
     if (!asiento) return;
@@ -1321,6 +1797,10 @@ window.editarEstructuraButaca = (id, event) => {
 
 window.cambiarEstadoButaca = (id) => {
     if (pestanaSalaActiva !== 'estados') return;
+    if (obtenerButacasVendidasFuturasPorSala(salaMantenimientoActual).has(id)) {
+        mostrarToast(`La butaca ${id} tiene una venta para una función futura; no se puede editar.`, 'error');
+        return;
+    }
     const sala = obtenerBorradorSalaActual();
     const asiento = sala.asientos.find(item => `${item.f}${item.c}` === id);
     if (!asiento || asiento.estado === 'pasadizo') return;
@@ -1407,6 +1887,151 @@ window.cambiarSalaMantenimiento = async (valor) => {
 let calendarioAdminMesActual = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 const NOMBRES_MESES_CALENDARIO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+function renderizarAdminTarifas() {
+    renderizarFormatosAdmin();
+    renderizarTiposEntradaAdmin();
+    renderizarAdminCalendario();
+}
+
+/* ============================================================================
+   MÓDULO 9 — TARIFAS: catálogo de formatos y de tipos de entrada (listas editables)
+   ============================================================================ */
+function renderizarFormatosAdmin() {
+    const contenedor = document.getElementById('admin-formatos-lista');
+    const catalogo = obtenerCatalogoFormatos();
+    contenedor.innerHTML = catalogo.map((f, i) => `
+        <div class="flex items-center gap-2 bg-dark-900 rounded-lg px-3 py-2">
+            <input type="text" value="${f.nombre}" onchange="editarFormatoAdmin(${i}, 'nombre', this.value)" class="flex-1 min-w-0 bg-transparent text-white text-sm focus:outline-none border-b border-transparent focus:border-brand-yellow">
+            <div class="flex items-center gap-1 text-gray-400 text-sm flex-shrink-0">
+                <span>S/</span>
+                <input type="number" min="0" step="0.5" value="${f.recargo}" onchange="editarFormatoAdmin(${i}, 'recargo', this.value)" class="w-16 bg-transparent text-white text-sm focus:outline-none border-b border-transparent focus:border-brand-yellow">
+            </div>
+            <button type="button" onclick="eliminarFormatoAdmin('${f.id}')" ${f.protegido ? `disabled title="Es el formato de entrada, no se puede eliminar"` : 'title="Eliminar"'} class="w-7 h-7 rounded flex items-center justify-center flex-shrink-0 ${f.protegido ? 'opacity-30 cursor-not-allowed text-gray-500' : 'text-brand-red hover:bg-brand-red/10'}"><i class="fa-solid fa-trash text-xs"></i></button>
+        </div>
+    `).join('');
+}
+
+window.editarFormatoAdmin = (indice, campo, valor) => {
+    const catalogo = obtenerCatalogoFormatos();
+    if (campo === 'nombre') {
+        if (!Validadores.minLength(valor, 1)) { mostrarToast('El nombre no puede estar vacío.', 'error'); renderizarFormatosAdmin(); return; }
+        catalogo[indice].nombre = valor.trim();
+    } else {
+        catalogo[indice].recargo = Math.max(0, Number(valor) || 0);
+    }
+    guardarCatalogoFormatos(catalogo);
+    mostrarToast('Formato actualizado.', 'exito');
+};
+
+window.agregarFormatoAdmin = async () => {
+    const inputNombre = document.getElementById('nuevo-formato-nombre');
+    const inputRecargo = document.getElementById('nuevo-formato-recargo');
+    if (!Validadores.minLength(inputNombre.value, 1)) { marcarCampoInvalido(inputNombre, 'Ingresa un nombre.'); return; }
+    limpiarCampoInvalido(inputNombre);
+
+    const catalogo = obtenerCatalogoFormatos();
+    const id = inputNombre.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `formato-${Date.now()}`;
+    if (catalogo.some(f => f.id === id)) { mostrarToast('Ya existe un formato con un nombre muy parecido.', 'error'); return; }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Agregar formato?',
+        mensaje: `Se agregará el formato "${inputNombre.value.trim()}" con S/ ${inputRecargo.value || 0} de recargo.`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, agregar'
+    });
+    if (!confirmado) return;
+
+    catalogo.push({ id, nombre: inputNombre.value.trim(), recargo: Math.max(0, Number(inputRecargo.value) || 0) });
+    guardarCatalogoFormatos(catalogo);
+    inputNombre.value = ''; inputRecargo.value = '';
+    renderizarFormatosAdmin();
+    mostrarToast('Formato agregado.', 'exito');
+};
+
+window.eliminarFormatoAdmin = async (id) => {
+    const catalogo = obtenerCatalogoFormatos();
+    const formato = catalogo.find(f => f.id === id);
+    if (!formato || formato.protegido) return;
+
+    // No se puede eliminar un formato que alguna sala o película ya tiene marcado, o que ya
+    // tiene funciones programadas — evita que una función quede con un formato "fantasma".
+    const enUso = obtenerDatosSalas().salas.some(s => (s.formatosSoportados || []).includes(id))
+        || Object.values(baseDatosPeliculas).some(p => (p.formatosDisponibles || []).includes(id))
+        || Object.values(baseDatosEstrenos).some(p => (p.formatosDisponibles || []).includes(id));
+    if (enUso) { mostrarToast('Este formato está en uso por alguna sala o película; quítalo de ahí primero.', 'error'); return; }
+
+    const confirmado = await confirmarAccion({ titulo: '¿Eliminar formato?', mensaje: `Se eliminará "${formato.nombre}" del catálogo.`, tipo: 'peligro', textoConfirmar: 'Sí, eliminar', textoCancelar: 'Cancelar' });
+    if (!confirmado) return;
+
+    guardarCatalogoFormatos(catalogo.filter(f => f.id !== id));
+    renderizarFormatosAdmin();
+    mostrarToast('Formato eliminado.', 'exito');
+};
+
+function renderizarTiposEntradaAdmin() {
+    const contenedor = document.getElementById('admin-tipos-entrada-lista');
+    const catalogo = obtenerCatalogoTiposEntrada();
+    contenedor.innerHTML = catalogo.map((t, i) => `
+        <div class="flex items-center gap-2 bg-dark-900 rounded-lg px-3 py-2">
+            <input type="text" value="${t.nombre}" onchange="editarTipoEntradaAdmin(${i}, 'nombre', this.value)" class="flex-1 min-w-0 bg-transparent text-white text-sm focus:outline-none border-b border-transparent focus:border-brand-yellow">
+            <div class="flex items-center gap-1 text-gray-400 text-sm flex-shrink-0">
+                <input type="number" min="0" max="100" value="${t.descuentoPct}" onchange="editarTipoEntradaAdmin(${i}, 'descuentoPct', this.value)" class="w-14 bg-transparent text-white text-sm focus:outline-none border-b border-transparent focus:border-brand-yellow">
+                <span>% dscto.</span>
+            </div>
+            <button type="button" onclick="eliminarTipoEntradaAdmin('${t.id}')" ${t.protegido ? `disabled title="Es el tipo por defecto, no se puede eliminar"` : 'title="Eliminar"'} class="w-7 h-7 rounded flex items-center justify-center flex-shrink-0 ${t.protegido ? 'opacity-30 cursor-not-allowed text-gray-500' : 'text-brand-red hover:bg-brand-red/10'}"><i class="fa-solid fa-trash text-xs"></i></button>
+        </div>
+    `).join('');
+}
+
+window.editarTipoEntradaAdmin = (indice, campo, valor) => {
+    const catalogo = obtenerCatalogoTiposEntrada();
+    if (campo === 'nombre') {
+        if (!Validadores.minLength(valor, 1)) { mostrarToast('El nombre no puede estar vacío.', 'error'); renderizarTiposEntradaAdmin(); return; }
+        catalogo[indice].nombre = valor.trim();
+    } else {
+        catalogo[indice].descuentoPct = Math.max(0, Math.min(100, Number(valor) || 0));
+    }
+    guardarCatalogoTiposEntrada(catalogo);
+    mostrarToast('Tipo de entrada actualizado.', 'exito');
+};
+
+window.agregarTipoEntradaAdmin = async () => {
+    const inputNombre = document.getElementById('nuevo-tipo-entrada-nombre');
+    const inputDescuento = document.getElementById('nuevo-tipo-entrada-descuento');
+    if (!Validadores.minLength(inputNombre.value, 1)) { marcarCampoInvalido(inputNombre, 'Ingresa un nombre.'); return; }
+    limpiarCampoInvalido(inputNombre);
+
+    const catalogo = obtenerCatalogoTiposEntrada();
+    const id = inputNombre.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `tipo-${Date.now()}`;
+    if (catalogo.some(t => t.id === id)) { mostrarToast('Ya existe un tipo de entrada con un nombre muy parecido.', 'error'); return; }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Agregar tipo de entrada?',
+        mensaje: `Se agregará "${inputNombre.value.trim()}" con un descuento del ${inputDescuento.value || 0}%.`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, agregar'
+    });
+    if (!confirmado) return;
+
+    catalogo.push({ id, nombre: inputNombre.value.trim(), descuentoPct: Math.max(0, Math.min(100, Number(inputDescuento.value) || 0)) });
+    guardarCatalogoTiposEntrada(catalogo);
+    inputNombre.value = ''; inputDescuento.value = '';
+    renderizarTiposEntradaAdmin();
+    mostrarToast('Tipo de entrada agregado.', 'exito');
+};
+
+window.eliminarTipoEntradaAdmin = async (id) => {
+    const catalogo = obtenerCatalogoTiposEntrada();
+    const tipo = catalogo.find(t => t.id === id);
+    if (!tipo || tipo.protegido) return;
+    const confirmado = await confirmarAccion({ titulo: '¿Eliminar tipo de entrada?', mensaje: `Se eliminará "${tipo.nombre}" del catálogo. Las compras ya hechas con este tipo no se ven afectadas (quedó guardado el nombre en el ticket).`, tipo: 'peligro', textoConfirmar: 'Sí, eliminar', textoCancelar: 'Cancelar' });
+    if (!confirmado) return;
+
+    guardarCatalogoTiposEntrada(catalogo.filter(t => t.id !== id));
+    renderizarTiposEntradaAdmin();
+    mostrarToast('Tipo de entrada eliminado.', 'exito');
+};
+
 window.cambiarMesCalendarioAdmin = (delta) => {
     calendarioAdminMesActual = new Date(calendarioAdminMesActual.getFullYear(), calendarioAdminMesActual.getMonth() + delta, 1);
     renderizarAdminCalendario();
@@ -1492,7 +2117,7 @@ function renderizarAdminDescuentos() {
     `).join('');
 }
 
-window.crearCuponAdmin = (e) => {
+window.crearCuponAdmin = async (e) => {
     e.preventDefault();
     const inputCodigo = document.getElementById('admin-cupon-codigo');
     const inputPorcentaje = document.getElementById('admin-cupon-porcentaje');
@@ -1506,6 +2131,21 @@ window.crearCuponAdmin = (e) => {
 
     const codigo = inputCodigo.value.trim().toUpperCase();
     const cuponesGuardados = JSON.parse(localStorage.getItem(LS_CUPONES)) || {};
+    
+    if (cuponesGuardados[codigo]) {
+        marcarCampoInvalido(inputCodigo, 'Este código ya está en uso.');
+        mostrarToast('El código ya existe.', 'error');
+        return;
+    }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Crear cupón?',
+        mensaje: `Se creará el cupón "${codigo}" con un ${inputPorcentaje.value}% de descuento.`,
+        tipo: 'info',
+        textoConfirmar: 'Sí, crear'
+    });
+    if (!confirmado) return;
+
     cuponesGuardados[codigo] = { porcentaje: Number(inputPorcentaje.value), descripcion: inputDesc.value.trim() || 'Cupón creado por administrador' };
     localStorage.setItem(LS_CUPONES, JSON.stringify(cuponesGuardados));
 
@@ -1537,3 +2177,490 @@ function renderizarAdminDashboard() {
     document.getElementById('admin-dash-tickets').textContent = totalTickets;
     document.getElementById('admin-dash-dulces').textContent = totalDulces;
 }
+
+/* ============================================================================
+   MÓDULO 7/8 — PESTAÑA "SOCIOS": VISOR de socios (solo lectura + cumpleaños)
+   ------------------------------------------------------------------------
+   MÓDULO 8: esta pestaña ya NO canjea ni suma puntos a mano. Un canje o un
+   puntaje sin una compra real detrás no es auditable y duplicaba el motor de
+   puntos del checkout; ahora todo movimiento de puntos nace de una venta real
+   (web, o "Nueva Venta" en counter). Aquí solo se busca al socio y se ve su
+   carnet, nivel e historial. La única acción que se conserva es marcar la
+   entrada de cumpleaños como usada: es un beneficio de una sola vez al año,
+   sin monto asociado, no una transacción.
+   Las validaciones son las mismas (ValidadoresSocio) que ve el cliente en su
+   vista de beneficios y el counter en la venta.
+   ============================================================================ */
+
+let correoSocioAdminActivo = null; // recuerda qué socio se está consultando (para la acción de cumpleaños)
+let filtroNivelSociosActivo = 'todos'; // 'todos' | 'bronce' | 'plata' | 'oro'
+
+/** Limpia la pestaña Socios al entrar (sin resultado de búsqueda pendiente de una visita anterior). */
+function reiniciarPanelSociosAdmin() {
+    correoSocioAdminActivo = null;
+    filtroNivelSociosActivo = 'todos';
+    document.getElementById('admin-socio-resultado').classList.add('hidden');
+    const inputBusqueda = document.getElementById('admin-socio-busqueda');
+    if (inputBusqueda) inputBusqueda.value = '';
+    renderizarListaSociosAdmin();
+}
+
+/* ============================================================================
+   MÓDULO 9 — Socios: listado completo con filtro por nivel y buscador libre
+   ============================================================================ */
+window.filtrarNivelSocioAdmin = (nivel) => {
+    filtroNivelSociosActivo = nivel;
+    renderizarListaSociosAdmin();
+};
+
+window.filtrarListaSociosAdmin = () => renderizarListaSociosAdmin();
+
+function renderizarListaSociosAdmin() {
+    const todosLosSocios = obtenerUsuarios().filter(usuarioEsSocio);
+    const termino = (document.getElementById('admin-socio-busqueda')?.value || '').trim().toLowerCase();
+
+    const conteoPorNivel = { bronce: 0, plata: 0, oro: 0 };
+    todosLosSocios.forEach(s => { const key = obtenerNivelSocio(s.puntos || 0).nombre.toLowerCase(); if (conteoPorNivel[key] !== undefined) conteoPorNivel[key]++; });
+
+    const etiquetasFiltro = { todos: `Todos (${todosLosSocios.length})`, bronce: `Bronce (${conteoPorNivel.bronce})`, plata: `Plata (${conteoPorNivel.plata})`, oro: `Oro (${conteoPorNivel.oro})` };
+    document.getElementById('admin-socios-filtros-nivel').innerHTML = Object.entries(etiquetasFiltro).map(([id, texto]) => `
+        <button type="button" onclick="filtrarNivelSocioAdmin('${id}')" class="px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${filtroNivelSociosActivo === id ? 'bg-brand-yellow text-black border-brand-yellow' : 'bg-dark-900 text-gray-300 border-white/10 hover:border-white/30'}">${texto}</button>
+    `).join('');
+
+    const visibles = todosLosSocios.filter(s => {
+        if (filtroNivelSociosActivo !== 'todos' && obtenerNivelSocio(s.puntos || 0).nombre.toLowerCase() !== filtroNivelSociosActivo) return false;
+        if (!termino) return true;
+        return [s.nombre, s.correo, s.codigoSocio, s.dniSimulado].filter(Boolean).some(campo => campo.toLowerCase().includes(termino));
+    });
+
+    document.getElementById('admin-socios-contador').textContent = `${visibles.length} de ${todosLosSocios.length} socio(s)`;
+
+    const contenedor = document.getElementById('admin-socios-lista');
+    if (visibles.length === 0) {
+        contenedor.innerHTML = htmlEstadoVacio({ icono: 'fa-id-card', titulo: 'Sin resultados', subtitulo: 'Prueba con otro nombre, correo, código o filtro de nivel.' });
+        return;
+    }
+    contenedor.innerHTML = visibles.map(s => {
+        const nivel = obtenerNivelSocio(s.puntos || 0);
+        const activo = s.correo === correoSocioAdminActivo;
+        return `
+        <button type="button" onclick="verSocioAdmin('${s.correo}')" class="w-full text-left bg-dark-900 hover:bg-dark-700 border ${activo ? 'border-brand-yellow' : 'border-white/5'} rounded-xl p-3 flex items-center gap-3 transition-colors">
+            <div class="w-9 h-9 rounded-full bg-dark-800 border flex items-center justify-center flex-shrink-0 text-xs font-bold" style="border-color:${nivel.colorHex}; color:${nivel.colorHex}"><i class="fa-solid fa-user"></i></div>
+            <div class="flex-grow min-w-0">
+                <p class="text-white font-semibold text-sm truncate">${s.nombre}</p>
+                <p class="text-gray-500 text-xs truncate">${s.correo} · <span class="font-mono">${s.codigoSocio || '—'}</span></p>
+            </div>
+            <div class="text-right flex-shrink-0">
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase" style="background:${nivel.colorHex}22; color:${nivel.colorHex}; border:1px solid ${nivel.colorHex}55">${nivel.nombre}</span>
+                <p class="text-brand-yellow font-bold text-sm mt-0.5">${s.puntos || 0} pts</p>
+            </div>
+        </button>`;
+    }).join('');
+}
+
+/** Abre el detalle completo de un socio (clic en su tarjeta de la lista). */
+window.verSocioAdmin = (correo) => {
+    const socio = buscarSocio(correo);
+    if (!socio) { mostrarToast('El socio ya no existe.', 'error'); return; }
+    correoSocioAdminActivo = socio.correo;
+    renderizarResultadoSocioAdmin(socio);
+    renderizarListaSociosAdmin(); // refresca el resaltado de "seleccionado" en la lista
+    document.getElementById('admin-socio-resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+/** Pinta la tarjeta de resultado con los datos y validadores del socio encontrado. */
+function renderizarResultadoSocioAdmin(socio) {
+    document.getElementById('admin-socio-resultado').classList.remove('hidden');
+    document.getElementById('admin-socio-nombre').textContent = socio.nombre;
+    document.getElementById('admin-socio-correo').textContent = socio.correo;
+    document.getElementById('admin-socio-codigo').textContent = socio.codigoSocio;
+    document.getElementById('admin-socio-puntos').textContent = `${socio.puntos} pts`;
+
+    const nivel = obtenerNivelSocio(socio.puntos);
+    const badge = document.getElementById('admin-socio-nivel-badge');
+    badge.textContent = `Nivel ${nivel.nombre}`;
+    badge.style.backgroundColor = `${nivel.colorHex}22`;
+    badge.style.color = nivel.colorHex;
+    badge.style.border = `1px solid ${nivel.colorHex}55`;
+
+    // Validador de cumpleaños: mismo texto y misma condición que ve el cliente en su vista de beneficios.
+    const cumple = ValidadoresSocio.tieneBeneficioCumpleanosDisponible(socio);
+    document.getElementById('admin-socio-cumple-texto').textContent = cumple.ok ? '¡Le corresponde su entrada de cumpleaños!' : cumple.motivo;
+    document.getElementById('admin-socio-btn-cumple').classList.toggle('hidden', !cumple.ok);
+
+    // Validador de fila preferencial (según nivel).
+    const fila = ValidadoresSocio.tieneFilaPreferencial(socio);
+    document.getElementById('admin-socio-fila-texto').textContent = fila.ok ? 'Tiene fila preferencial' : fila.motivo;
+
+    const historial = (socio.historialPuntos || []).slice(0, 10);
+    const contenedorHistorial = document.getElementById('admin-socio-historial');
+    if (historial.length === 0) {
+        contenedorHistorial.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">Este socio todavía no tiene movimientos de puntos.</p>';
+    } else {
+        contenedorHistorial.innerHTML = historial.map(mov => `
+            <div class="flex justify-between items-center bg-dark-900 rounded-lg px-3 py-2 text-sm">
+                <div>
+                    <p class="text-gray-300">${mov.motivo}</p>
+                    <p class="text-gray-500 text-xs">${new Date(mov.fecha).toLocaleString('es-PE')}</p>
+                </div>
+                <span class="font-bold ${mov.cantidad >= 0 ? 'text-green-400' : 'text-brand-red'}">${mov.cantidad >= 0 ? '+' : ''}${mov.cantidad} pts</span>
+            </div>
+        `).join('');
+    }
+}
+
+/** Vuelve a cargar y pintar al socio activo desde localStorage (tras validar el cumpleaños). */
+function refrescarSocioAdminActivo() {
+    if (!correoSocioAdminActivo) return;
+    const socio = buscarSocio(correoSocioAdminActivo);
+    if (socio) renderizarResultadoSocioAdmin(socio);
+}
+
+window.validarCumpleanosAdmin = async () => {
+    if (!correoSocioAdminActivo) return;
+    const socio = buscarSocio(correoSocioAdminActivo);
+    const validacion = ValidadoresSocio.tieneBeneficioCumpleanosDisponible(socio);
+    if (!validacion.ok) { mostrarToast(validacion.motivo, 'error'); return; }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Entregar entrada de cumpleaños?',
+        mensaje: `Se marcará como usado el beneficio de cumpleaños de ${socio.nombre} para este año. Esta acción no se puede deshacer.`,
+        tipo: 'advertencia',
+        textoConfirmar: 'Sí, entregar',
+        textoCancelar: 'Cancelar'
+    });
+    if (!confirmado) return;
+
+    marcarBeneficioCumpleanosUsado(correoSocioAdminActivo);
+    mostrarToast('Entrada de cumpleaños entregada. ¡Que disfrute la función!', 'exito');
+    refrescarSocioAdminActivo();
+};
+
+/* ============================================================================
+   MÓDULO 8 — PESTAÑA "PERSONAL": CRUD de cuentas counter y admin
+   ------------------------------------------------------------------------
+   Solo gestiona cuentas de trabajo (rol 'counter' y 'admin'). Los clientes
+   nacen del registro público y no se editan desde aquí. Toda la lógica de
+   datos y las reglas (no eliminar/desactivar/degradar al último admin activo,
+   nadie se modifica a sí mismo) viven en socios.js sección 8; este bloque
+   solo pinta y comunica el resultado con toasts/confirmaciones.
+   ============================================================================ */
+
+let filtroPersonalActivo = 'todos'; // 'todos' | 'counter' | 'admin'
+let correoPersonalEnEdicion = null;  // null = el modal está creando una cuenta nueva
+
+/** Red de seguridad: cualquier acción de Personal exige una sesión de admin (no solo haber entrado al panel). */
+function exigirAdminParaPersonal() {
+    if (!usuarioActual || usuarioActual.rol !== 'admin') {
+        mostrarToast('Acceso restringido: solo para administradores.', 'error');
+        return false;
+    }
+    return true;
+}
+
+function escaparHtmlPersonal(texto) {
+    return String(texto).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+window.filtrarPersonalAdmin = (filtro) => {
+    filtroPersonalActivo = filtro;
+    renderizarAdminPersonal();
+};
+
+/** Pinta la lista de cuentas de personal con sus acciones (deshabilitando las que las reglas prohíben). */
+function renderizarAdminPersonal() {
+    const contenedor = document.getElementById('admin-personal-lista');
+    if (!contenedor || !usuarioActual) return;
+
+    const todos = listarPersonal();
+    const cuentaCounter = todos.filter(u => u.rol === 'counter').length;
+    const cuentaAdmin = todos.filter(u => u.rol === 'admin').length;
+
+    const etiquetasFiltro = { todos: `Todos (${todos.length})`, counter: `Counter (${cuentaCounter})`, admin: `Administradores (${cuentaAdmin})` };
+    document.getElementById('admin-personal-filtros').innerHTML = Object.entries(etiquetasFiltro).map(([id, texto]) => `
+        <button type="button" onclick="filtrarPersonalAdmin('${id}')" class="px-4 py-1.5 rounded-full text-xs font-bold border transition-colors ${filtroPersonalActivo === id ? 'bg-brand-yellow text-black border-brand-yellow' : 'bg-dark-900 text-gray-300 border-white/10 hover:border-white/30'}">${texto}</button>
+    `).join('');
+
+    const termino = (document.getElementById('admin-personal-busqueda')?.value || '').trim().toLowerCase();
+    const visibles = todos.filter(u => {
+        if (filtroPersonalActivo !== 'todos' && u.rol !== filtroPersonalActivo) return false;
+        if (!termino) return true;
+        return [u.nombre, u.correo, u.dni].filter(Boolean).some(campo => campo.toLowerCase().includes(termino));
+    });
+    if (visibles.length === 0) {
+        contenedor.innerHTML = htmlEstadoVacio({
+            icono: 'fa-users-gear',
+            titulo: 'Sin resultados',
+            subtitulo: 'Prueba con otro nombre, correo, DNI o filtro de rol.',
+            textoBoton: 'Nueva cuenta',
+            accionBoton: 'abrirModalPersonal()'
+        });
+        return;
+    }
+
+    contenedor.innerHTML = visibles.map(u => {
+        const activa = cuentaEstaActiva(u);
+        const esYo = u.correo === usuarioActual.correo;
+        const esUltimoAdmin = u.rol === 'admin' && contarAdminsActivos(todos, u.correo) === 0;
+        const bloqueadaParaBaja = esYo || esUltimoAdmin;
+        const motivoBloqueo = esYo ? 'No puedes hacerlo con tu propia cuenta' : 'Es el único administrador activo';
+        const rolInfo = ROLES_PERSONAL[u.rol];
+        const correoSeguro = escaparHtmlPersonal(u.correo);
+        const claseBloqueado = 'opacity-40 cursor-not-allowed';
+
+        return `
+        <div class="bg-dark-800 border border-white/5 rounded-2xl p-4 flex flex-col md:flex-row md:items-center gap-4 shadow-xl ${activa ? '' : 'opacity-60'}">
+            <div class="w-11 h-11 rounded-full bg-dark-900 border border-white/10 flex items-center justify-center flex-shrink-0">
+                <i class="fa-solid ${u.rol === 'admin' ? 'fa-user-shield text-brand-yellow' : 'fa-cash-register text-brand-red'}"></i>
+            </div>
+            <div class="flex-grow min-w-0">
+                <p class="text-white font-bold truncate">${escaparHtmlPersonal(u.nombre)}${esYo ? ' <span class="text-xs text-brand-yellow font-semibold">(tú)</span>' : ''}</p>
+                <p class="text-gray-400 text-sm truncate">${correoSeguro}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <span class="px-3 py-1 rounded-full text-xs font-bold border ${u.rol === 'admin' ? 'bg-brand-yellow/10 text-brand-yellow border-brand-yellow/30' : 'bg-brand-red/10 text-brand-red border-brand-red/30'}">${rolInfo.nombre}</span>
+                <span class="px-3 py-1 rounded-full text-xs font-bold border ${activa ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-gray-500/10 text-gray-400 border-gray-500/30'}">${activa ? 'Activa' : 'Desactivada'}</span>
+            </div>
+            <div class="flex gap-2">
+                <button type="button" data-correo="${correoSeguro}" onclick="abrirFichaPersonal(this.dataset.correo)" title="Ver ficha" class="w-9 h-9 rounded-lg bg-dark-900 hover:bg-dark-700 border border-white/10 text-white flex items-center justify-center transition-colors"><i class="fa-solid fa-eye"></i></button>
+                <button type="button" data-correo="${correoSeguro}" onclick="abrirModalPersonal(this.dataset.correo)" title="Editar" class="w-9 h-9 rounded-lg bg-dark-900 hover:bg-dark-700 border border-white/10 text-white flex items-center justify-center transition-colors"><i class="fa-solid fa-pen"></i></button>
+                <button type="button" data-correo="${correoSeguro}" onclick="alternarEstadoPersonalAdmin(this.dataset.correo)" ${(activa && bloqueadaParaBaja) ? `disabled title="${motivoBloqueo}"` : `title="${activa ? 'Desactivar' : 'Activar'}"`} class="w-9 h-9 rounded-lg bg-dark-900 border border-white/10 text-white flex items-center justify-center transition-colors ${(activa && bloqueadaParaBaja) ? claseBloqueado : 'hover:bg-dark-700'}"><i class="fa-solid ${activa ? 'fa-user-slash' : 'fa-user-check'}"></i></button>
+                <button type="button" data-correo="${correoSeguro}" onclick="eliminarPersonalAdmin(this.dataset.correo)" ${bloqueadaParaBaja ? `disabled title="${motivoBloqueo}"` : 'title="Eliminar"'} class="w-9 h-9 rounded-lg bg-dark-900 border border-white/10 text-brand-red flex items-center justify-center transition-colors ${bloqueadaParaBaja ? claseBloqueado : 'hover:bg-brand-red/10'}"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+/** Abre el modal en modo "crear" (sin argumento) o "editar" (con el correo de la cuenta). */
+window.abrirModalPersonal = (correo = null) => {
+    if (!exigirAdminParaPersonal()) return;
+
+    const inputNombre = document.getElementById('personal-nombre');
+    const inputCorreo = document.getElementById('personal-correo');
+    const selectRol = document.getElementById('personal-rol');
+    const inputContrasena = document.getElementById('personal-contrasena');
+    const inputDni = document.getElementById('personal-dni');
+    const inputTelefono = document.getElementById('personal-telefono');
+    const inputNota = document.getElementById('personal-nota');
+    [inputNombre, inputCorreo, inputContrasena, inputDni, inputTelefono].forEach(limpiarCampoInvalido);
+
+    correoPersonalEnEdicion = correo;
+    if (correo) {
+        const cuenta = listarPersonal().find(u => u.correo === correo);
+        if (!cuenta) { mostrarToast('La cuenta ya no existe.', 'error'); renderizarAdminPersonal(); return; }
+        document.getElementById('personal-modal-titulo').textContent = 'Editar cuenta';
+        inputNombre.value = cuenta.nombre;
+        inputCorreo.value = cuenta.correo;
+        inputCorreo.readOnly = true;
+        inputCorreo.classList.add('opacity-60', 'cursor-not-allowed');
+        inputDni.value = cuenta.dni || '';
+        inputTelefono.value = cuenta.telefono || '';
+        inputNota.value = cuenta.nota || '';
+        selectRol.value = cuenta.rol;
+        selectRol.disabled = cuenta.correo === usuarioActual.correo; // nadie cambia su propio rol
+        inputContrasena.value = '';
+        inputContrasena.placeholder = 'Dejar vacío para no cambiarla';
+        document.getElementById('personal-ayuda-contrasena').textContent = 'Solo escribe algo si quieres restablecer la contraseña. El correo no se puede cambiar.';
+    } else {
+        document.getElementById('personal-modal-titulo').textContent = 'Nueva cuenta';
+        inputNombre.value = '';
+        inputCorreo.value = '';
+        inputCorreo.readOnly = false;
+        inputCorreo.classList.remove('opacity-60', 'cursor-not-allowed');
+        inputDni.value = '';
+        inputTelefono.value = '';
+        inputNota.value = '';
+        selectRol.value = 'counter';
+        selectRol.disabled = false;
+        inputContrasena.value = generarContrasenaTemporal();
+        inputContrasena.placeholder = 'Mínimo 6 caracteres';
+        document.getElementById('personal-ayuda-contrasena').textContent = 'Se generó una contraseña temporal; puedes cambiarla o generar otra. Anótala para entregársela: al guardar se muestra una sola vez.';
+    }
+
+    const modal = document.getElementById('modal-personal');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('personal-contenido').classList.remove('scale-95'); }, 10);
+};
+
+window.cerrarModalPersonal = () => {
+    const modal = document.getElementById('modal-personal');
+    modal.classList.add('opacity-0');
+    document.getElementById('personal-contenido').classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 200);
+    correoPersonalEnEdicion = null;
+};
+
+window.generarContrasenaPersonalAdmin = () => {
+    const input = document.getElementById('personal-contrasena');
+    input.value = generarContrasenaTemporal();
+    limpiarCampoInvalido(input);
+};
+
+window.guardarPersonalAdmin = async (e) => {
+    e.preventDefault();
+    if (!exigirAdminParaPersonal()) return;
+
+    const inputNombre = document.getElementById('personal-nombre');
+    const inputCorreo = document.getElementById('personal-correo');
+    const inputDni = document.getElementById('personal-dni');
+    const inputTelefono = document.getElementById('personal-telefono');
+    const inputNota = document.getElementById('personal-nota');
+    const selectRol = document.getElementById('personal-rol');
+    const inputContrasena = document.getElementById('personal-contrasena');
+    const editando = correoPersonalEnEdicion !== null;
+
+    // 1) Validación "frontend" (campo por campo, con mensaje bajo cada input). MÓDULO 9: DNI y
+    // celular son obligatorios siempre (crear y editar), para tener trazabilidad real del personal.
+    const reglas = [
+        { input: inputNombre, prueba: () => Validadores.soloTexto(inputNombre.value), mensaje: 'Ingresa un nombre válido (solo letras).' },
+        { input: inputDni, prueba: () => Validadores.dni(inputDni.value), mensaje: 'Ingresa un DNI válido (8 dígitos).' },
+        { input: inputTelefono, prueba: () => Validadores.telefono(inputTelefono.value), mensaje: 'Ingresa un celular válido (9 dígitos, empieza con 9).' }
+    ];
+    if (!editando) {
+        reglas.push({ input: inputCorreo, prueba: () => Validadores.correo(inputCorreo.value), mensaje: 'Ingresa un correo electrónico válido.' });
+        reglas.push({ input: inputContrasena, prueba: () => Validadores.contrasena(inputContrasena.value), mensaje: 'La contraseña debe tener al menos 6 caracteres.' });
+    } else if (inputContrasena.value) {
+        reglas.push({ input: inputContrasena, prueba: () => Validadores.contrasena(inputContrasena.value), mensaje: 'La contraseña debe tener al menos 6 caracteres.' });
+    }
+    if (!validarFormulario(reglas)) return;
+
+
+    const confirmado = await confirmarAccion({
+        titulo: editando ? '¿Guardar cambios?' : '¿Registrar personal?',
+        mensaje: editando ? `Se actualizarán los datos de ${inputNombre.value.trim()}.` : `Se registrará a ${inputNombre.value.trim()} como nuevo miembro del personal.`,
+        tipo: 'info',
+        textoConfirmar: editando ? 'Sí, guardar' : 'Sí, registrar'
+    });
+    if (!confirmado) return;
+
+    const contrasenaEscrita = inputContrasena.value;
+    const datosComunes = { nombre: inputNombre.value, dni: inputDni.value, telefono: inputTelefono.value, nota: inputNota.value };
+
+    // 2) Las reglas de negocio (correo duplicado, DNI duplicado, último admin, etc.) se repiten dentro de socios.js
+    if (editando) {
+        const rolElegido = selectRol.disabled ? undefined : selectRol.value;
+        const resultado = actualizarCuentaPersonal(correoPersonalEnEdicion, { ...datosComunes, rol: rolElegido, contrasena: contrasenaEscrita || undefined }, usuarioActual.correo);
+        if (!resultado.ok) { mostrarToast(resultado.motivo, 'error'); return; }
+
+        const correoEditado = correoPersonalEnEdicion;
+        cerrarModalPersonal();
+        renderizarAdminPersonal();
+        mostrarToast('Cuenta actualizada.', 'exito');
+        if (contrasenaEscrita) {
+            await alertaBonita({ titulo: 'Contraseña restablecida', mensaje: `Cuenta: ${correoEditado}
+Nueva contraseña: ${contrasenaEscrita}
+
+Entrégasela a la persona: no volverá a mostrarse.`, tipo: 'info' });
+        }
+        return;
+    }
+
+    const resultado = crearCuentaPersonal({ ...datosComunes, correo: inputCorreo.value, contrasena: contrasenaEscrita, rol: selectRol.value }, usuarioActual.correo);
+    if (!resultado.ok) {
+        if (resultado.motivo.includes('correo ya')) marcarCampoInvalido(inputCorreo, resultado.motivo);
+        if (resultado.motivo.includes('DNI')) marcarCampoInvalido(inputDni, resultado.motivo);
+        mostrarToast(resultado.motivo, 'error');
+        return;
+    }
+
+    cerrarModalPersonal();
+    renderizarAdminPersonal();
+    mostrarToast(`Cuenta ${ROLES_PERSONAL[resultado.usuario.rol].nombre} creada.`, 'exito');
+    await alertaBonita({ titulo: 'Cuenta creada', mensaje: `Correo: ${resultado.usuario.correo}
+Contraseña: ${contrasenaEscrita}
+
+Entrega estas credenciales a la persona: la contraseña no volverá a mostrarse.`, tipo: 'info' });
+};
+
+window.alternarEstadoPersonalAdmin = async (correo) => {
+    if (!exigirAdminParaPersonal()) return;
+    const cuenta = listarPersonal().find(u => u.correo === correo);
+    if (!cuenta) { renderizarAdminPersonal(); return; }
+    const activar = !cuentaEstaActiva(cuenta);
+
+    if (!activar) {
+        const confirmado = await confirmarAccion({
+            titulo: '¿Desactivar cuenta?',
+            mensaje: `${cuenta.nombre} no podrá iniciar sesión hasta que la vuelvas a activar. Su historial de ventas se conserva.`,
+            tipo: 'advertencia',
+            textoConfirmar: 'Sí, desactivar',
+            textoCancelar: 'Cancelar'
+        });
+        if (!confirmado) return;
+    }
+
+    const resultado = cambiarEstadoCuentaPersonal(correo, activar, usuarioActual.correo);
+    if (!resultado.ok) { mostrarToast(resultado.motivo, 'error'); return; }
+    mostrarToast(activar ? 'Cuenta activada.' : 'Cuenta desactivada.', 'exito');
+    renderizarAdminPersonal();
+};
+
+/* ============================================================================
+   MÓDULO 9 — Ficha de detalle de una cuenta de Personal (solo lectura)
+   ============================================================================ */
+window.abrirFichaPersonal = (correo) => {
+    const cuenta = listarPersonal().find(u => u.correo === correo);
+    if (!cuenta) { mostrarToast('La cuenta ya no existe.', 'error'); renderizarAdminPersonal(); return; }
+
+    const rolInfo = ROLES_PERSONAL[cuenta.rol];
+    document.getElementById('ficha-personal-icono').className = `fa-solid ${cuenta.rol === 'admin' ? 'fa-user-shield text-brand-yellow' : 'fa-cash-register text-brand-red'}`;
+    document.getElementById('ficha-personal-nombre').textContent = cuenta.nombre;
+    const badge = document.getElementById('ficha-personal-rol-badge');
+    badge.textContent = rolInfo.nombre;
+    badge.className = `px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase ${cuenta.rol === 'admin' ? 'bg-brand-yellow/10 text-brand-yellow border border-brand-yellow/30' : 'bg-brand-red/10 text-brand-red border border-brand-red/30'}`;
+
+    document.getElementById('ficha-personal-correo').textContent = cuenta.correo;
+    document.getElementById('ficha-personal-dni').textContent = cuenta.dni || '—';
+    document.getElementById('ficha-personal-telefono').textContent = cuenta.telefono || '—';
+    document.getElementById('ficha-personal-contrasena').textContent = '••••••••';
+    document.getElementById('ficha-personal-contrasena').dataset.real = cuenta.contrasena || '';
+    document.getElementById('ficha-personal-icono-ojo').className = 'fa-solid fa-eye';
+
+    const activa = cuentaEstaActiva(cuenta);
+    const estadoEl = document.getElementById('ficha-personal-estado');
+    estadoEl.innerHTML = `<span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${activa ? 'bg-green-500/10 text-green-400 border border-green-500/30' : 'bg-gray-500/10 text-gray-400 border border-gray-500/30'}">${activa ? 'Activa' : 'Desactivada'}</span>`;
+
+    document.getElementById('ficha-personal-fecha-ingreso').textContent = cuenta.creadoEn ? new Date(cuenta.creadoEn).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
+    document.getElementById('ficha-personal-creado-por').textContent = cuenta.creadoPor || 'Cuenta original del sistema';
+    document.getElementById('ficha-personal-nota').textContent = cuenta.nota || 'Sin notas.';
+    document.getElementById('ficha-personal-btn-editar').dataset.correo = cuenta.correo;
+
+    const modal = document.getElementById('modal-ficha-personal');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('ficha-personal-contenido').classList.remove('scale-95'); }, 10);
+};
+
+window.cerrarFichaPersonal = () => {
+    const modal = document.getElementById('modal-ficha-personal');
+    modal.classList.add('opacity-0');
+    document.getElementById('ficha-personal-contenido').classList.add('scale-95');
+    setTimeout(() => modal.classList.add('hidden'), 200);
+};
+
+window.alternarVerContrasenaFicha = () => {
+    const span = document.getElementById('ficha-personal-contrasena');
+    const icono = document.getElementById('ficha-personal-icono-ojo');
+    const oculta = span.textContent === '••••••••';
+    span.textContent = oculta ? (span.dataset.real || '—') : '••••••••';
+    icono.className = oculta ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+};
+
+window.eliminarPersonalAdmin = async (correo) => {
+    if (!exigirAdminParaPersonal()) return;
+    const cuenta = listarPersonal().find(u => u.correo === correo);
+    if (!cuenta) { renderizarAdminPersonal(); return; }
+
+    const confirmado = await confirmarAccion({
+        titulo: '¿Eliminar cuenta?',
+        mensaje: `Se eliminará definitivamente la cuenta de ${cuenta.nombre} (${cuenta.correo}). Si solo quieres que no pueda entrar, usa "Desactivar".`,
+        tipo: 'peligro',
+        textoConfirmar: 'Sí, eliminar',
+        textoCancelar: 'Cancelar'
+    });
+    if (!confirmado) return;
+
+    const resultado = eliminarCuentaPersonal(correo, usuarioActual.correo);
+    if (!resultado.ok) { mostrarToast(resultado.motivo, 'error'); return; }
+    mostrarToast('Cuenta eliminada.', 'exito');
+    renderizarAdminPersonal();
+};

@@ -1,7 +1,7 @@
 /* ============================================================================
-   CINERAMA — MODALES.JS — Componente reutilizable de confirmación / alerta
+   CINE NÁUTICA — MODALES.JS — Componente reutilizable de confirmación / alerta
    ------------------------------------------------------------------------
-   Parte de la arquitectura modular de Cinerama (Módulo 1 — infraestructura).
+   Parte de la arquitectura modular de la app (Módulo 1 — infraestructura).
    Reemplaza alert() y confirm() nativos por modales con la estética de la
    app. Se inyecta una única vez en el DOM (no requiere tocar index.html)
    y se reutiliza en todos los módulos siguientes.
@@ -31,7 +31,7 @@ function crearModalConfirmacionSiNoExiste() {
                 <i id="confirmacion-global-icono" class="fa-solid text-2xl"></i>
             </div>
             <h3 id="confirmacion-global-titulo" class="text-white font-bold text-lg text-center mb-2"></h3>
-            <p id="confirmacion-global-mensaje" class="text-gray-400 text-sm text-center mb-6 leading-relaxed"></p>
+            <p id="confirmacion-global-mensaje" class="text-gray-400 text-sm text-center mb-6 leading-relaxed whitespace-pre-line"></p>
             <div id="confirmacion-global-barra-tiempo-track" class="hidden w-full h-1 bg-white/10 rounded-full overflow-hidden mb-6 -mt-3">
                 <div id="confirmacion-global-barra-tiempo" class="h-full bg-brand-yellow rounded-full" style="width:100%"></div>
             </div>

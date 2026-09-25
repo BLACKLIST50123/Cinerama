@@ -1,7 +1,7 @@
 /* ============================================================================
-   CINERAMA — UTILIDADES.JS — Helpers compartidos por cliente.js y admin.js
+   CINE NÁUTICA — UTILIDADES.JS — Helpers compartidos por cliente.js y admin.js
    ------------------------------------------------------------------------
-   Parte de la arquitectura modular de Cinerama (Fase 14).
+   Parte de la arquitectura modular de la app (Fase 14).
    Cargado como <script> clásico (no ES module) para funcionar también
    abriendo index.html directamente con file://, sin necesidad de servidor.
    Toasts, validadores, formato de moneda/fecha y helpers de salas/ventas
@@ -134,6 +134,29 @@ function guardarEnLocalStorageSeguro(clave, valor) {
     }
 }
 
+/** MÓDULO 7 (idea 1): copia un texto (código de socio) al portapapeles, con fallback si el navegador no da permiso. */
+window.copiarCodigoSocio = async (codigo) => {
+    if (!codigo) return;
+    try {
+        await navigator.clipboard.writeText(codigo);
+        mostrarToast('Código de socio copiado.', 'exito');
+    } catch (err) {
+        const textarea = document.createElement('textarea');
+        textarea.value = codigo;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            mostrarToast('Código de socio copiado.', 'exito');
+        } catch (err2) {
+            mostrarToast(`No se pudo copiar automáticamente. Tu código es: ${codigo}`, 'error');
+        }
+        document.body.removeChild(textarea);
+    }
+};
+
 function formatearFechaAmigable(fechaISO) {
     if (!fechaISO) return '';
     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -159,13 +182,24 @@ function crearConfiguracionSala(numero, filas = LAYOUT_SALA.filas.length, column
     for (let f = 0; f < filas; f++) {
         for (let c = 1; c <= columnas; c++) asientos.push({ f: etiquetaFilaSala(f), c, estado: 'disponible' });
     }
-    return { id_sala: `sala_${String(numero).padStart(2, '0')}`, nombre: `Sala ${numero}`, filas, columnas, asientos };
+    // MÓDULO 9: por defecto una sala nueva soporta TODOS los formatos del catálogo (para no bloquear
+    // de golpe las funciones/películas ya programadas); el admin la restringe desde Admin > Salas.
+    const formatosSoportados = obtenerCatalogoFormatos().map(f => f.id);
+    return { id_sala: `sala_${String(numero).padStart(2, '0')}`, nombre: `Sala ${numero}`, filas, columnas, asientos, formatosSoportados };
 }
 
 /** Lee el nuevo esquema y migra en memoria el formato antiguo { sala: [butacas bloqueadas] }. */
 function obtenerDatosSalas() {
     const guardado = JSON.parse(localStorage.getItem(LS_SALAS_MANTENIMIENTO));
-    if (guardado && Array.isArray(guardado.salas)) return guardado;
+    if (guardado && Array.isArray(guardado.salas)) {
+        // MÓDULO 9: compatibilidad con salas guardadas antes de existir el catálogo de formatos.
+        let faltaCompletar = false;
+        guardado.salas.forEach(sala => {
+            if (!Array.isArray(sala.formatosSoportados)) { sala.formatosSoportados = obtenerCatalogoFormatos().map(f => f.id); faltaCompletar = true; }
+        });
+        if (faltaCompletar) guardarEnLocalStorageSeguro(LS_SALAS_MANTENIMIENTO, guardado);
+        return guardado;
+    }
 
     const salas = [];
     for (let numero = 1; numero <= NUMERO_TOTAL_SALAS; numero++) {
@@ -236,11 +270,36 @@ function obtenerButacasVendidas(sala, fechaFuncion, horaFuncion) {
 }
 
 /** Total histórico de butacas vendidas en una sala, sin importar la función. Uso puramente
- *  informativo (badge del panel admin > Salas > Mantenimiento; nunca bloquea la venta real). */
+ *  informativo (nunca bloquea la venta real). */
 function obtenerButacasVendidasTotalPorSala(sala) {
     const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
     const vendidas = new Set();
     ventas.filter(v => Number(v.sala) === Number(sala)).forEach(v => v.asientos.forEach(id => vendidas.add(id)));
+    return vendidas;
+}
+
+/**
+ * MÓDULO 9: butacas de una sala que están vendidas en al menos una función FUTURA (fecha+hora
+ * aún no pasada). Esta es la que usa Admin > Salas para decidir qué se puede editar: una butaca
+ * comprometida con un ticket futuro nunca se toca; el resto de la sala se edita libre.
+ * Los registros de venta guardados sin fecha/hora (de antes del fix de Módulo 2) se tratan como
+ * bloqueantes siempre, por seguridad (no se puede saber si ya pasaron).
+ */
+function obtenerButacasVendidasFuturasPorSala(sala) {
+    const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
+    const ahora = new Date();
+    const vendidas = new Set();
+    ventas.filter(v => Number(v.sala) === Number(sala)).forEach(v => {
+        let esFutura = true;
+        if (v.fechaFuncion && v.horaFuncion && typeof resolverFechaISODeEtiqueta === 'function') {
+            const iso = resolverFechaISODeEtiqueta(v.fechaFuncion);
+            if (iso) {
+                const dt = new Date(`${iso}T${v.horaFuncion}:00`);
+                if (!isNaN(dt.getTime())) esFutura = dt.getTime() >= ahora.getTime();
+            }
+        }
+        if (esFutura) v.asientos.forEach(id => vendidas.add(id));
+    });
     return vendidas;
 }
 
@@ -349,7 +408,10 @@ function obtenerVentasGenerales() {
 /** Convierte una duración con formato "2h 25m" (o variantes con espacios) en minutos totales. */
 function duracionAMinutos(duracionStr) {
     if (!duracionStr) return 0;
-    const match = String(duracionStr).match(/(\d+)\s*h(?:\s*(\d+)\s*m)?/i);
+    const str = String(duracionStr).toLowerCase().trim();
+    if (/^\d+m?$/.test(str)) return parseInt(str, 10); // Ej: "135" o "135m"
+    
+    const match = str.match(/(\d+)\s*h(?:\s*(\d+)\s*m)?/);
     if (!match) return 0;
     const horas = parseInt(match[1], 10) || 0;
     const minutos = parseInt(match[2], 10) || 0;

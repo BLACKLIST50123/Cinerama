@@ -1,7 +1,7 @@
 /* ============================================================================
-   CINERAMA — CHATBOT.JS — CineBot (asistente simulado)
+   CINE NÁUTICA — CHATBOT.JS — CineBot (asistente simulado)
    ------------------------------------------------------------------------
-   Parte de la arquitectura modular de Cinerama (Fase 14).
+   Parte de la arquitectura modular de la app (Fase 14).
    Cargado como <script> clásico (no ES module) para funcionar también
    abriendo index.html directamente con file://, sin necesidad de servidor.
 
@@ -69,7 +69,7 @@ function inicializarChatbot() {
             const minuscula = texto.toLowerCase();
 
             if (minuscula.includes('hola') || minuscula.includes('saludos') || minuscula.includes('buenas')) {
-                respuesta = "¡Hola! Bienvenido a Cinerama 🍿. ¿En qué te puedo ayudar? Puedes preguntarme por películas en estreno, precios o los combos de dulcería.";
+                respuesta = "¡Hola! Bienvenido a Cine Náutica 🍿. ¿En qué te puedo ayudar? Puedes preguntarme por películas en estreno, precios o los combos de dulcería.";
             } else if (minuscula.includes('precio') || minuscula.includes('costo') || minuscula.includes('cuanto')) {
                 respuesta = "Nuestras entradas regulares cuestan S/ 22.00 para adultos y S/ 18.00 para niños o adultos mayores. ¿Deseas saber el precio de algún combo?";
             } else if (minuscula.includes('estreno') || minuscula.includes('cartelera') || minuscula.includes('pelicula') || minuscula.includes('ver')) {
