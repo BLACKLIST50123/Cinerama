@@ -54,6 +54,24 @@ window.cambiarTabAdmin = async (tab) => {
             }
         }
     }
+
+    // Mantenimiento: Aviso de cambios sin guardar al salir de la pestaña Salas
+    if (tabAdminActivo === 'salas' && tab !== 'salas' && typeof haySalaCambiosSinGuardar !== 'undefined' && haySalaCambiosSinGuardar) {
+        const descartar = await confirmarAccion({
+            titulo: 'Cambios sin guardar en Salas',
+            mensaje: 'Tienes cambios pendientes en la configuración de la sala. Si cambias de sección ahora, se perderán. ¿Deseas descartarlos y salir de todos modos?',
+            tipo: 'advertencia',
+            textoConfirmar: 'Sí, descartar y salir',
+            textoCancelar: 'Quedarme aquí'
+        });
+        if (!descartar) return; // Se queda en la pestaña de Salas
+        
+        // Descartamos los cambios
+        borradorSalaActual = null;
+        borradorSalaNumero = null;
+        haySalaCambiosSinGuardar = false;
+    }
+
     tabAdminActivo = tab;
 
     document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('activo'));
@@ -345,7 +363,7 @@ function obtenerFuncionesAgrupadasPorFechaISO() {
             if (!fechaISO) return;
             (pelicula.horarios[etiqueta] || []).forEach((grupo, indiceGrupo) => {
                 (grupo.horas || []).forEach((horaRaw, indiceHora) => {
-                    const { hora, sala } = normalizarFuncionHorario(horaRaw);
+                    const { hora, sala, estado } = normalizarFuncionHorario(horaRaw);
                     if (!mapa[fechaISO]) mapa[fechaISO] = [];
                     mapa[fechaISO].push({
                         peliculaId: pelicula.id, peliculaTitulo: pelicula.titulo, poster: pelicula.poster,
@@ -353,7 +371,7 @@ function obtenerFuncionesAgrupadasPorFechaISO() {
                         etiquetaFecha: etiqueta, fechaISO,
                         formato: grupo.formato, formatoId: grupo.formatoId || resolverFormatoIdDesdeTexto(grupo.formato),
                         idioma: grupo.idioma || (grupo.formato && grupo.formato.includes('Subtitulada') ? 'Subtitulada' : 'Doblada'),
-                        hora, sala: Number(sala), indiceGrupo, indiceHora
+                        hora, sala: Number(sala), indiceGrupo, indiceHora, estado
                     });
                 });
             });
@@ -582,7 +600,11 @@ function renderizarTarjetasEnGrid(slots) {
             // Clase de tipo
             let clasesTipo = 'tipo-regular';
             let tagTipo = '';
-            if (tipoLanzamiento === 'Estreno') {
+            
+            if (f.estado === 'cancelada') {
+                clasesTipo = 'tipo-regular !bg-brand-red/30 !border-brand-red !opacity-70 grayscale';
+                tagTipo = '<span class="grid-funcion-card-tag bg-brand-red">CANCELADA</span>';
+            } else if (tipoLanzamiento === 'Estreno') {
                 clasesTipo = 'tipo-estreno';
                 tagTipo = '<span class="grid-funcion-card-tag tag-estreno">ESTRENO</span>';
             } else if (tipoLanzamiento === 'Pre-Estreno') {
@@ -1626,6 +1648,13 @@ let borradorSalaActual = null;   // copia de trabajo de la sala visible, no pers
 let borradorSalaNumero = null;   // a qué número de sala pertenece el borrador actual
 let haySalaCambiosSinGuardar = false;
 
+window.tieneCambiosAdminSinGuardar = () => haySalaCambiosSinGuardar;
+window.descartarCambiosAdminForzado = () => {
+    borradorSalaActual = null;
+    borradorSalaNumero = null;
+    haySalaCambiosSinGuardar = false;
+};
+
 function clonarSala(sala) {
     return JSON.parse(JSON.stringify(sala));
 }
@@ -1684,6 +1713,15 @@ function renderizarAdminSalas() {
     document.getElementById('admin-sala-columnas').value = sala.columnas;
     const grid = document.getElementById('admin-grid-salas');
     grid.style.setProperty('--columnas-sala', sala.columnas);
+    
+    const switchActiva = document.getElementById('admin-sala-estado-switch');
+    const textoEstado = document.getElementById('admin-sala-estado-texto');
+    if (switchActiva) {
+        const esActiva = sala.estado === 'activa';
+        switchActiva.checked = esActiva;
+        textoEstado.textContent = esActiva ? 'Activa' : 'Mantenimiento';
+        textoEstado.className = `text-sm font-bold ${esActiva ? 'text-green-500' : 'text-brand-red'}`;
+    }
 
     // MÓDULO 9: qué butacas están comprometidas con una venta futura. Ya no se muestra ningún
     // indicador visual en la matriz (el admin no necesita adivinar); si intenta tocarlas, el
@@ -1723,6 +1761,74 @@ window.toggleFormatoSalaAdmin = (formatoId, marcado) => {
     if (marcado && !sala.formatosSoportados.includes(formatoId)) sala.formatosSoportados.push(formatoId);
     if (!marcado) sala.formatosSoportados = sala.formatosSoportados.filter(id => id !== formatoId);
     marcarSalaComoModificada();
+};
+
+function obtenerFuncionesFuturasPorSala(id_sala) {
+    const salaNum = Number(id_sala.replace('sala_', ''));
+    let futuras = [];
+    Object.values(baseDatosPeliculas).forEach(pelicula => {
+        if (!pelicula.horarios) return;
+        Object.entries(pelicula.horarios).forEach(([fecha, formatos]) => {
+            formatos.forEach(formato => {
+                formato.horas.forEach(h => {
+                    const horaRaw = typeof h === 'object' ? h.hora : h;
+                    const hSala = typeof h === 'object' && h.sala ? h.sala : 1;
+                    const hEstado = typeof h === 'object' && h.estado ? h.estado : 'programada';
+                    
+                    if (Number(hSala) === salaNum && hEstado !== 'cancelada') {
+                        futuras.push({ pelicula: pelicula.id, fecha, hora: horaRaw });
+                    }
+                });
+            });
+        });
+    });
+    return futuras;
+}
+
+function cancelarFuncionesFuturasPorSala(id_sala) {
+    const salaNum = Number(id_sala.replace('sala_', ''));
+    Object.values(baseDatosPeliculas).forEach(pelicula => {
+        if (!pelicula.horarios) return;
+        Object.entries(pelicula.horarios).forEach(([fecha, formatos]) => {
+            formatos.forEach(formato => {
+                formato.horas = formato.horas.map(h => {
+                    const horaRaw = typeof h === 'object' ? h.hora : h;
+                    const hSala = typeof h === 'object' && h.sala ? h.sala : 1;
+                    const hEstado = typeof h === 'object' && h.estado ? h.estado : 'programada';
+                    
+                    if (Number(hSala) === salaNum && hEstado !== 'cancelada') {
+                        return { hora: horaRaw, sala: hSala, estado: 'cancelada' };
+                    }
+                    return h;
+                });
+            });
+        });
+    });
+    guardarCarteleraEnStorage();
+}
+
+window.toggleEstadoSalaAdmin = async (marcado) => {
+    const sala = obtenerBorradorSalaActual();
+    const nuevoEstado = marcado ? 'activa' : 'mantenimiento';
+    
+    if (nuevoEstado === 'mantenimiento') {
+        const funciones = obtenerFuncionesFuturasPorSala(sala.id_sala);
+        if (funciones.length > 0) {
+            const msj = `Hay ${funciones.length} función/es programada(s) desde hoy en adelante para esta sala. Pasarla a mantenimiento cancelará todas estas funciones automáticamente. ¿Estás seguro?`;
+            const confirmado = await confirmarAccion({ titulo: '¿Pasar a mantenimiento?', mensaje: msj, tipo: 'peligro', textoConfirmar: 'Sí, cancelar funciones y pasar a mantenimiento', textoCancelar: 'Cancelar' });
+            if (!confirmado) {
+                renderizarAdminSalas(); 
+                return;
+            }
+            sala.cancelarFuncionesPendientes = true;
+        }
+    } else {
+        sala.cancelarFuncionesPendientes = false;
+    }
+    
+    sala.estado = nuevoEstado;
+    marcarSalaComoModificada();
+    renderizarAdminSalas();
 };
 
 /**
@@ -1824,6 +1930,11 @@ window.guardarCambiosSala = async () => {
         textoCancelar: 'Seguir editando'
     });
     if (!confirmar) return;
+
+    if (borradorSalaActual.cancelarFuncionesPendientes) {
+        cancelarFuncionesFuturasPorSala(borradorSalaActual.id_sala);
+        delete borradorSalaActual.cancelarFuncionesPendientes;
+    }
 
     const datos = obtenerDatosSalas();
     const indice = datos.salas.findIndex(s => Number(s.id_sala.replace('sala_', '')) === salaMantenimientoActual);
@@ -2682,3 +2793,12 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 } else {
     document.addEventListener('DOMContentLoaded', configurarFormatoDuracion);
 }
+
+// Mantenimiento: Aviso de cambios sin guardar al cerrar la pestaña o recargar la página (por ejemplo al darle a "Volver al Sitio" o cerrar el navegador)
+window.addEventListener('beforeunload', function (e) {
+    if (typeof haySalaCambiosSinGuardar !== 'undefined' && haySalaCambiosSinGuardar) {
+        // Los navegadores modernos muestran un mensaje genérico, pero requieren que e.returnValue tenga un valor
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});

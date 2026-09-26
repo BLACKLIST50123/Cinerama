@@ -185,7 +185,7 @@ function crearConfiguracionSala(numero, filas = LAYOUT_SALA.filas.length, column
     // MÓDULO 9: por defecto una sala nueva soporta TODOS los formatos del catálogo (para no bloquear
     // de golpe las funciones/películas ya programadas); el admin la restringe desde Admin > Salas.
     const formatosSoportados = obtenerCatalogoFormatos().map(f => f.id);
-    return { id_sala: `sala_${String(numero).padStart(2, '0')}`, nombre: `Sala ${numero}`, filas, columnas, asientos, formatosSoportados };
+    return { id_sala: `sala_${String(numero).padStart(2, '0')}`, nombre: `Sala ${numero}`, estado: 'activa', filas, columnas, asientos, formatosSoportados };
 }
 
 /** Lee el nuevo esquema y migra en memoria el formato antiguo { sala: [butacas bloqueadas] }. */
@@ -196,6 +196,7 @@ function obtenerDatosSalas() {
         let faltaCompletar = false;
         guardado.salas.forEach(sala => {
             if (!Array.isArray(sala.formatosSoportados)) { sala.formatosSoportados = obtenerCatalogoFormatos().map(f => f.id); faltaCompletar = true; }
+            if (!sala.estado) { sala.estado = 'activa'; faltaCompletar = true; }
         });
         if (faltaCompletar) guardarEnLocalStorageSeguro(LS_SALAS_MANTENIMIENTO, guardado);
         return guardado;

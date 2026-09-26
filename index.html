@@ -69,6 +69,9 @@
             <a href="#" id="link-nav-venta" class="hidden text-brand-yellow hover:text-white transition-colors"
                 onclick="intentarSalirDelFlujoDeCompra(() => abrirNuevaVentaCounter()); return false;"><i
                     class="fa-solid fa-cash-register mr-1"></i>Nueva Venta</a>
+            <a href="#" id="link-nav-atencion" class="hidden text-brand-yellow hover:text-white transition-colors"
+                onclick="abrirModalAtencionCliente(); return false;"><i class="fa-solid fa-headset mr-1"></i>Atención al
+                Cliente</a>
         </nav>
         <div class="hidden md:flex items-center gap-4">
             <!-- Contenedor para Invitados -->
@@ -102,6 +105,15 @@
         <button id="btn-menu-movil" onclick="toggleMenuMovil()"
             class="md:hidden text-white text-2xl focus:outline-none"><i class="fa-solid fa-bars"></i></button>
     </header>
+
+    <!-- BANNER DE REUBICACIÓN -->
+    <div id="banner-modo-reubicar"
+        class="hidden fixed top-[72px] left-0 w-full bg-brand-red text-white text-center py-2 font-bold text-sm z-40 shadow-lg border-b-2 border-white/20">
+        <i class="fa-solid fa-triangle-exclamation mr-2"></i> MODO REUBICACIÓN ACTIVO: Ticket <span
+            id="banner-reubicar-ticket"></span>
+        <button onclick="cancelarModoReubicacion()"
+            class="ml-4 bg-white text-brand-red px-3 py-1 rounded text-xs hover:bg-gray-100 transition-colors">Cancelar</button>
+    </div>
 
     <!-- ============================================================
          LIBRO DE RECLAMACIONES — ícono flotante fijo (obligatorio)
@@ -1103,7 +1115,7 @@
                         <h2 class="text-2xl font-bold text-white mb-6">Gestión de Cartelera y Horarios</h2>
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl">
-                                <h3 class="text-lg font-bold text-white mb-4">Agregar Película / Horario</h3>
+                                <h3 class="text-lg font-bold text-white mb-4">Agregar Película</h3>
                                 <form onsubmit="crearPeliculaAdmin(event)" class="space-y-4">
 
                                     <!-- Sección 1: Datos básicos -->
@@ -1498,6 +1510,18 @@
                                     seleccionada</label>
                                 <select id="admin-select-sala" onchange="cambiarSalaMantenimiento(this.value)"
                                     class="w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white text-center font-bold focus:outline-none focus:border-brand-red"></select>
+                                <div class="flex items-center justify-center gap-3 mt-4">
+                                    <span class="text-xs text-gray-400 font-bold uppercase">Estado Operativo:</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="admin-sala-estado-switch" class="sr-only peer"
+                                            onchange="toggleEstadoSalaAdmin(this.checked)">
+                                        <div
+                                            class="w-11 h-6 bg-brand-red peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500">
+                                        </div>
+                                    </label>
+                                    <span id="admin-sala-estado-texto"
+                                        class="text-sm font-bold text-green-500">Activa</span>
+                                </div>
                             </div>
                             <div
                                 class="flex items-center gap-2 mb-4 bg-dark-900 border border-white/10 rounded-full px-4 py-1.5">
@@ -1597,19 +1621,21 @@
                     <!-- 15.5 Tarifas -->
                     <div id="tab-panel-tarifas" class="admin-tab-panel hidden">
                         <h2 class="text-2xl font-bold text-white mb-2">Tarifas</h2>
-                        <p class="text-gray-400 text-sm mb-8">El precio final de una entrada se construye en <strong class="text-white">3 pasos</strong>: <span class="text-brand-yellow">&#9312; Tarifa base del d&#237;a</span> + <span class="text-blue-400">&#9313; Recargo del formato</span> + <span class="text-green-400">&#9314; Descuento del tipo de entrada</span>.</p>
 
                         <!-- TARIFAS POR DÍA -->
                         <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl max-w-2xl mb-8">
-                            <h3 class="text-lg font-bold text-white mb-1"><i class="fa-solid fa-calendar-day text-brand-yellow mr-2"></i>① Tarifas Base por Día</h3>
-                            <p class="text-gray-500 text-xs mb-5">Precio de un asiento sin recargos ni descuentos adicionales. Aplica automáticamente según el día de la función y si es pre-estreno.</p>
+                            <h3 class="text-lg font-bold text-white mb-1"><i
+                                    class="fa-solid fa-calendar-day text-brand-yellow mr-2"></i>Tarifas Base por Día
+                            </h3>
+                            <p class="text-gray-500 text-xs mb-5">Precio de un asiento sin recargos ni descuentos
+                                adicionales. Aplica automáticamente según el día de la función y si es pre-estreno.</p>
                             <div id="admin-tarifas-dia-lista" class="space-y-3 mb-2"></div>
                         </div>
 
                         <!-- MÓDULO 9: Formatos de proyección -->
                         <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl max-w-2xl mb-8">
                             <h3 class="text-lg font-bold text-white mb-1"><i
-                                    class="fa-solid fa-clapperboard-play text-blue-400 mr-2"></i>② Formatos de
+                                    class="fa-solid fa-clapperboard-play text-blue-400 mr-2"></i>Formatos de
                                 proyección</h3>
                             <p class="text-gray-500 text-xs mb-4">El recargo se suma a la tarifa base del día. "2D" es
                                 el formato de entrada y no se puede eliminar. Las salas y películas eligen entre estos
@@ -1630,7 +1656,7 @@
                         <!-- MÓDULO 9: Tipos de entrada -->
                         <div class="bg-dark-800 border border-white/5 rounded-2xl p-6 shadow-xl max-w-2xl mb-8">
                             <h3 class="text-lg font-bold text-white mb-1"><i
-                                    class="fa-solid fa-ticket text-green-400 mr-2"></i>③ Tipos de entrada</h3>
+                                    class="fa-solid fa-ticket text-green-400 mr-2"></i>Tipos de entrada</h3>
                             <p class="text-gray-500 text-xs mb-4">Descuento en % sobre la tarifa ya calculada (base +
                                 formato). "General / Adulto" es el tipo por defecto y no se puede eliminar. CONADIS
                                 refleja el 20% de descuento de la Ley N° 29973, editable si cambia la norma.</p>
@@ -1919,7 +1945,7 @@
             </div>
         </div>
 
-         ============================================================ -->
+        ============================================================ -->
         <div id="modal-editar-dulce"
             class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
             <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200 max-h-[90vh] overflow-y-auto hide-scrollbar"
@@ -2454,6 +2480,35 @@
             </div>
         </div>
     </div>
+
+    <!-- ============================================================
+         MODAL: ATENCIÓN AL CLIENTE (Solo Counter/Admin)
+         ============================================================ -->
+    <div id="modal-atencion-cliente"
+        class="hidden fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center opacity-0 transition-opacity duration-200 p-4">
+        <div
+            class="bg-dark-800 p-8 rounded-2xl border border-white/10 shadow-2xl max-w-lg w-full relative transform scale-95 transition-transform duration-200">
+            <button onclick="cerrarModalAtencionCliente()"
+                class="absolute top-4 right-4 text-gray-400 hover:text-white"><i
+                    class="fa-solid fa-xmark text-xl"></i></button>
+            <h3 class="text-2xl font-bold text-white mb-2">Atención al Cliente</h3>
+            <p class="text-gray-400 text-sm mb-6">Busca una orden por código de ticket o DNI para gestionar
+                contingencias.</p>
+
+            <form onsubmit="buscarOrdenAtencionCliente(event)" class="mb-6 flex gap-2">
+                <input type="text" id="input-busqueda-atencion" placeholder="Ej. CR-12345 o DNI" required
+                    class="flex-1 bg-dark-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-brand-yellow">
+                <button type="submit"
+                    class="bg-brand-yellow hover:bg-brand-yellow/80 text-black font-bold px-6 py-3 rounded-xl transition-colors"><i
+                        class="fa-solid fa-search"></i></button>
+            </form>
+
+            <div id="atencion-resultado" class="hidden flex flex-col gap-4">
+                <!-- Se llena con js -->
+            </div>
+        </div>
+    </div>
+
 
     <!-- ============================================================
          FASE 7: MODAL INFORMATIVO GENÉRICO (enlaces del footer)

@@ -429,11 +429,20 @@ const renderizarContenidoHorarios = (pelicula, fechasDisponibles) => {
         // MÓDULO 9: el id del formato viaja junto al texto (grupos viejos sin formatoId se resuelven por nombre).
         const formatoIdDeEsteGrupo = funcion.formatoId || resolverFormatoIdDesdeTextoCliente(funcion.formato);
         funcion.horas.forEach(horaRaw => {
-            // FASE 7: cada horario ahora trae su propia sala asignada { hora, sala }
-            const { hora, sala } = normalizarFuncionHorario(horaRaw);
-            horariosHTML += `<button onclick="seleccionarHorario(this, '${funcion.formato}', '${formatoIdDeEsteGrupo}', '${hora}', ${sala})" class="time-btn bg-dark-900 border border-gray-600 hover:border-brand-red hover:bg-brand-red/10 text-white font-bold py-2.5 px-6 rounded-lg transition-colors focus:outline-none flex flex-col items-center leading-tight">
-                <span>${hora}</span><span class="text-[10px] text-gray-500 font-normal">Sala ${sala}</span>
-            </button>`;
+            // FASE 7: cada horario ahora trae su propia sala asignada { hora, sala, estado }
+            const { hora, sala, estado } = normalizarFuncionHorario(horaRaw);
+            const esCancelada = estado === 'cancelada';
+
+            if (esCancelada) {
+                horariosHTML += `<button disabled class="time-btn bg-brand-red/20 border border-brand-red/50 text-white/50 font-bold py-2.5 px-6 rounded-lg focus:outline-none flex flex-col items-center leading-tight opacity-60 cursor-not-allowed">
+                    <span class="line-through">${hora}</span>
+                    <span class="text-[9px] text-brand-red mt-1 font-black bg-brand-red/20 px-1.5 rounded">CANCELADA</span>
+                </button>`;
+            } else {
+                horariosHTML += `<button onclick="seleccionarHorario(this, '${funcion.formato}', '${formatoIdDeEsteGrupo}', '${hora}', ${sala})" class="time-btn bg-dark-900 border border-gray-600 hover:border-brand-red hover:bg-brand-red/10 text-white font-bold py-2.5 px-6 rounded-lg transition-colors focus:outline-none flex flex-col items-center leading-tight">
+                    <span>${hora}</span><span class="text-[10px] text-gray-500 font-normal">Sala ${sala}</span>
+                </button>`;
+            }
         });
         horariosHTML += `</div></div>`;
     });
@@ -500,9 +509,9 @@ function resolverFormatoIdDesdeTextoCliente(formatoTexto) {
 /** FASE 7: normaliza un horario, que puede venir como string (dato antiguo) u objeto { hora, sala }. */
 function normalizarFuncionHorario(horaRaw) {
     if (horaRaw && typeof horaRaw === 'object') {
-        return { hora: horaRaw.hora, sala: Number(horaRaw.sala) || 1 };
+        return { hora: horaRaw.hora, sala: Number(horaRaw.sala) || 1, estado: horaRaw.estado || 'programada' };
     }
-    return { hora: horaRaw, sala: 1 };
+    return { hora: horaRaw, sala: 1, estado: 'programada' };
 }
 
 
@@ -735,7 +744,7 @@ window.clickAsiento = (asientoId) => {
             });
             btn.classList.remove('bg-green-600', 'hover:bg-green-500');
             btn.classList.add('selected');
-            bloquearAsientoTemporalmente(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId); 
+            bloquearAsientoTemporalmente(estadoPedido.sala || 1, estadoPedido.fecha, estadoPedido.hora, asientoId);
             actualizarResumenAsientos();
             modalDiv.remove();
         };
@@ -909,6 +918,24 @@ function estadoPedidoTieneProgreso() {
  * @param {Function} accionNavegacion - función que ejecuta la navegación real.
  */
 async function intentarSalirDelFlujoDeCompra(accionNavegacion) {
+    // 1. Mantenimiento: Verificación de cambios sin guardar en el Panel Admin (Salas)
+    if (typeof window.tieneCambiosAdminSinGuardar === 'function' && window.tieneCambiosAdminSinGuardar()) {
+        const descartar = await confirmarAccion({
+            titulo: 'Cambios sin guardar en Salas',
+            mensaje: 'Tienes cambios pendientes en la configuración de la sala. Si sales ahora, se perderán. ¿Deseas descartarlos y salir de todos modos?',
+            tipo: 'advertencia',
+            textoConfirmar: 'Sí, descartar y salir',
+            textoCancelar: 'Quedarme aquí'
+        });
+        if (!descartar) return; // Se queda en la vista actual
+        
+        // Descartamos los cambios
+        if (typeof window.descartarCambiosAdminForzado === 'function') {
+            window.descartarCambiosAdminForzado();
+        }
+    }
+
+    // 2. Verificación de flujo de compra (código existente)
     if (!estadoPedidoTieneProgreso()) { accionNavegacion(); return; }
 
     const salir = await confirmarAccion({
@@ -930,6 +957,71 @@ window.intentarSalirDelFlujoDeCompra = intentarSalirDelFlujoDeCompra;
    ============================================================================ */
 
 window.irADulceria = () => {
+    // MODO REUBICACIÓN: Interceptar el flujo aquí y terminar
+    if (estadoPedido.modoReubicar) {
+        if (estadoPedido.asientos.length !== estadoPedido.cantidadAsientosRequeridos) {
+            mostrarToast(`Debes seleccionar exactamente ${estadoPedido.cantidadAsientosRequeridos} asientos para la reubicación.`, 'error');
+            return;
+        }
+
+        const ordenOriginal = estadoPedido.ticketReubicando;
+
+        // Liberar asientos antiguos y registrar nuevos
+        let ventasAsientos = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
+        ventasAsientos = ventasAsientos.filter(va => va.id !== ordenOriginal.codigo);
+        ventasAsientos.push({
+            id: ordenOriginal.codigo,
+            pelicula: estadoPedido.pelicula.id,
+            fechaFuncion: estadoPedido.fecha,
+            horaFuncion: estadoPedido.hora,
+            sala: estadoPedido.sala,
+            asientos: [...estadoPedido.asientos],
+            expiraAt: null
+        });
+        localStorage.setItem(LS_VENTAS_ASIENTOS, JSON.stringify(ventasAsientos));
+
+        // Actualizar la orden original
+        const ventasGlobal = JSON.parse(localStorage.getItem(LS_VENTAS_GENERAL)) || [];
+        const idx = ventasGlobal.findIndex(v => v.codigo === ordenOriginal.codigo);
+        if (idx !== -1) {
+            ventasGlobal[idx].idPelicula = estadoPedido.pelicula.id;
+            ventasGlobal[idx].peliculaTitulo = estadoPedido.pelicula.titulo;
+            ventasGlobal[idx].fechaFuncion = estadoPedido.fecha;
+            ventasGlobal[idx].horaFuncion = estadoPedido.hora;
+            ventasGlobal[idx].sala = estadoPedido.sala;
+            ventasGlobal[idx].asientos = [...estadoPedido.asientos];
+            ventasGlobal[idx].estado = 'activa';
+            localStorage.setItem(LS_VENTAS_GENERAL, JSON.stringify(ventasGlobal));
+        }
+
+        mostrarToast(`Ticket ${ordenOriginal.codigo} reubicado con éxito.`, 'exito');
+        cancelarModoReubicacion();
+
+        // --- Mostrar el ticket actualizado en pantalla ---
+        document.querySelector('#vista-ticket h2').textContent = '¡Reubicación Exitosa!';
+        document.querySelector('#vista-ticket p.text-gray-400.text-lg').textContent = 'Tu nuevo horario está confirmado. Descarga tu ticket actualizado.';
+        const bloquePuntosTicket = document.getElementById('ticket-puntos-ganados');
+        if (bloquePuntosTicket) bloquePuntosTicket.classList.add('hidden');
+        
+        document.getElementById('pdf-titulo-pelicula').textContent = estadoPedido.pelicula.titulo;
+        document.getElementById('pdf-formato').textContent = estadoPedido.formato.toUpperCase();
+        document.getElementById('pdf-fecha').textContent = estadoPedido.fecha;
+        document.getElementById('pdf-hora').textContent = estadoPedido.hora;
+        document.getElementById('pdf-cine').textContent = `${estadoPedido.cine || 'Cine Náutica'} - Sala ${estadoPedido.sala || 1}`;
+        document.getElementById('pdf-asientos').textContent = estadoPedido.asientos.map(s => s.id).join(', ') || '—';
+        document.getElementById('pdf-codigo').textContent = ordenOriginal.codigo.replace('CR-', '');
+        
+        document.getElementById('pdf-dulces').innerHTML = '<li class="text-gray-500 font-normal">Revisar boleta original.</li>';
+        
+        // Ocultar la parte de la boleta (ya que es solo reubicación)
+        const comprobanteContenedor = document.getElementById('comprobante-imprimible');
+        if (comprobanteContenedor) comprobanteContenedor.parentElement.classList.add('hidden');
+
+        cambiarVista('vista-asientos', 'vista-ticket');
+        setTimeout(() => limpiarEstadoPedido(), 350);
+        return;
+    }
+
     renderizarGridDulceria('all');
     actualizarResumenFinal();
     aplicarModoDirectoUI();
@@ -1259,12 +1351,12 @@ function refrescarBloqueCanjePuntos() {
 /** Deja el formulario de pago en blanco (datos del comprobante, tarjeta, cupón, puntos, badges de autocompletado). */
 function reiniciarFormularioCheckout() {
     ['campo-nombre', 'campo-correo', 'campo-dni', 'campo-ruc', 'campo-numero-tarjeta', 'campo-vencimiento-tarjeta',
-     'campo-cvv-tarjeta', 'campo-titular-tarjeta', 'input-cupon', 'input-puntos-canje', 'counter-busqueda-socio'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.value = '';
-        limpiarCampoInvalido(el);
-    });
+        'campo-cvv-tarjeta', 'campo-titular-tarjeta', 'input-cupon', 'input-puntos-canje', 'counter-busqueda-socio'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = '';
+            limpiarCampoInvalido(el);
+        });
     document.querySelectorAll('#vista-pago .badge-autocompletado').forEach(b => b.remove());
 
     const check = document.getElementById('check-privacidad-pago');
@@ -1677,6 +1769,11 @@ function finalizarProcesamientoPago() {
         codigo: `CR-${codigoTicket}`,
         fecha: hoy.toISOString(),
         pelicula: (estadoPedido.modoDirecto || !estadoPedido.pelicula) ? 'Pedido de Dulcería' : estadoPedido.pelicula.titulo,
+        idPelicula: (estadoPedido.modoDirecto || !estadoPedido.pelicula) ? null : estadoPedido.pelicula.id,
+        sala: (estadoPedido.modoDirecto || !estadoPedido.sala) ? null : estadoPedido.sala,
+        fechaFuncion: (estadoPedido.modoDirecto || !estadoPedido.fecha) ? null : estadoPedido.fecha,
+        horaFuncion: (estadoPedido.modoDirecto || !estadoPedido.hora) ? null : estadoPedido.hora,
+        estado: 'pagada',
         detalle: (estadoPedido.modoDirecto || !estadoPedido.pelicula) ? 'Retiro en barra' : `${estadoPedido.fecha} • ${estadoPedido.hora} • ${estadoPedido.formato}`,
         asientos: estadoPedido.asientos.map(s => s.id),
         dulces: Object.entries(estadoPedido.carrito).map(([id, cant]) => `${cant}x ${PRECIOS.dulces[id].nombre}`),
@@ -1708,6 +1805,13 @@ function finalizarProcesamientoPago() {
     // MÓDULO 8: tras una venta de counter el formulario se deja limpio (los datos del cliente atendido no deben quedar para el siguiente).
     // La sesión del counter no se toca: nunca se inició sesión como el cliente.
     if (usuarioActual && usuarioActual.rol === 'counter') reiniciarFormularioCheckout();
+
+    // Asegurarse de que el comprobante sea visible (pudo ocultarse en una reubicación) y el título sea el correcto
+    const comprobanteContenedor = document.getElementById('comprobante-imprimible');
+    if (comprobanteContenedor) comprobanteContenedor.parentElement.classList.remove('hidden');
+    document.querySelector('#vista-ticket h2').textContent = '¡Compra Exitosa!';
+    document.querySelector('#vista-ticket p.text-gray-400.text-lg').textContent = 'Tu reserva está confirmada. Descarga tus comprobantes.';
+
     cambiarVista('vista-pago', 'vista-ticket');
     // FIX: se limpia el pedido un instante después de la transición de vista (no antes), para que
     // el stepper de la vista de ticket siga mostrando correctamente el recorrido (normal o
@@ -1718,18 +1822,18 @@ function finalizarProcesamientoPago() {
 
 window.descargarPDF = (idElemento, nombreArchivo) => {
     const elemento = document.getElementById(idElemento);
-    
+
     // 1. Calculamos solo la altura real (el ancho ya es fijo de 350px en tu HTML)
     const alturaPx = elemento.scrollHeight;
-    
+
     // 2. Ancho fijo de ticketera (95mm) y altura "infinita" + 2mm de gracia
     const anchoMm = 95;
-    const alturaMm = (alturaPx * 0.264583) + 2; 
+    const alturaMm = (alturaPx * 0.264583) + 2;
 
     const opciones = {
-        margin: 0, 
+        margin: 0,
         filename: nombreArchivo,
-        image: { type: 'png', quality: 1 }, 
+        image: { type: 'png', quality: 1 },
         html2canvas: {
             scale: 3, // Subimos un poco la nitidez, 3 es el balance perfecto
             useCORS: true,
@@ -1740,7 +1844,7 @@ window.descargarPDF = (idElemento, nombreArchivo) => {
         pagebreak: { mode: 'avoid-all' },
         jsPDF: { unit: 'mm', format: [anchoMm, alturaMm], orientation: 'portrait' }
     };
-    
+
     html2pdf().set(opciones).from(elemento).save();
 };
 
@@ -1872,7 +1976,24 @@ window.manejarLogin = (e) => {
 };
 
 window.cerrarSesion = async () => {
-    // MÓDULO 8: si un counter cierra sesión con una venta a medias, se avisa; y se limpia todo para que el siguiente usuario no herede datos del cliente atendido.
+    // 1. Mantenimiento: Verificación de cambios sin guardar en el Panel Admin
+    if (typeof window.tieneCambiosAdminSinGuardar === 'function' && window.tieneCambiosAdminSinGuardar()) {
+        const descartar = await confirmarAccion({
+            titulo: 'Cambios sin guardar en Salas',
+            mensaje: 'Tienes cambios pendientes en la configuración de la sala. Si cierras sesión ahora, se perderán. ¿Deseas descartarlos y cerrar sesión de todos modos?',
+            tipo: 'advertencia',
+            textoConfirmar: 'Sí, descartar y cerrar',
+            textoCancelar: 'Quedarme aquí'
+        });
+        if (!descartar) return; // Cancela el cierre de sesión
+        
+        // Descartamos los cambios
+        if (typeof window.descartarCambiosAdminForzado === 'function') {
+            window.descartarCambiosAdminForzado();
+        }
+    }
+
+    // 2. MÓDULO 8: si un counter cierra sesión con una venta a medias...
     const eraCounter = Boolean(usuarioActual && usuarioActual.rol === 'counter');
     if (eraCounter && estadoPedidoTieneProgreso()) {
         const confirmado = await confirmarAccion({
@@ -1929,11 +2050,15 @@ window.actualizarNavbarAuth = () => {
     // "Nueva Venta" y su ausencia de "Mis Compras" son exclusivos del rol counter.
     const mostrarMecanicaSocio = !usuarioActual || usuarioEsSocio(usuarioActual);
     const esCounter = Boolean(usuarioActual && usuarioActual.rol === 'counter');
+    const esCounterOAdmin = Boolean(usuarioActual && (usuarioActual.rol === 'counter' || usuarioActual.rol === 'admin'));
     ['link-nav-socio', 'link-nav-socio-movil', 'link-footer-socio'].forEach(id => {
         document.getElementById(id)?.classList.toggle('hidden', !mostrarMecanicaSocio);
     });
     ['link-nav-venta', 'link-nav-venta-movil'].forEach(id => {
         document.getElementById(id)?.classList.toggle('hidden', !esCounter);
+    });
+    ['link-nav-atencion', 'link-nav-atencion-movil'].forEach(id => {
+        document.getElementById(id)?.classList.toggle('hidden', !esCounterOAdmin);
     });
     const btnMisComprasEscritorio = document.getElementById('btn-mis-compras');
     if (btnMisComprasEscritorio) { btnMisComprasEscritorio.classList.toggle('hidden', esCounter); btnMisComprasEscritorio.classList.toggle('flex', !esCounter); }
@@ -2445,7 +2570,7 @@ const CONTENIDO_LEGAL = {
 window.abrirModalTrailer = (peliculaId, tipo = 'cartelera') => {
     const pelicula = tipo === 'estreno' ? baseDatosEstrenos[peliculaId] : baseDatosPeliculas[peliculaId];
     if (!pelicula) return;
-    
+
     document.getElementById('trailer-titulo').textContent = `Tráiler - ${pelicula.titulo}`;
 
     // Convertimos el enlace normal a formato "embed" automáticamente
@@ -2455,7 +2580,7 @@ window.abrirModalTrailer = (peliculaId, tipo = 'cartelera') => {
     } else if (urlBase.includes('youtu.be/')) {
         urlBase = urlBase.replace('youtu.be/', 'www.youtube.com/embed/');
     }
-    
+
     // Le inyectamos el enlace de YouTube al reproductor (iframe)
     const iframe = document.getElementById('trailer-iframe');
     // Le agregamos autoplay para que inicie solito al abrir
@@ -2471,8 +2596,8 @@ window.cerrarModalTrailer = () => {
     const modal = document.getElementById('modal-trailer');
     modal.classList.add('opacity-0');
     document.getElementById('trailer-contenido').classList.add('scale-95');
-    
-    setTimeout(() => { 
+
+    setTimeout(() => {
         modal.classList.add('hidden');
         // NUEVO MUY IMPORTANTE: Borramos el enlace al cerrar para que el video se apague y no suene de fondo
         document.getElementById('trailer-iframe').src = '';
@@ -2497,4 +2622,156 @@ window.cerrarModalLegal = () => {
     modal.classList.add('opacity-0');
     document.getElementById('legal-contenido').classList.add('scale-95');
     setTimeout(() => modal.classList.add('hidden'), 200);
+};
+
+/* ============================================================================
+   MÓDULO: ATENCIÓN AL CLIENTE (CONTINGENCIAS Y REUBICACIÓN)
+   ============================================================================ */
+
+window.abrirModalAtencionCliente = () => {
+    document.getElementById('input-busqueda-atencion').value = '';
+    document.getElementById('atencion-resultado').innerHTML = '';
+    document.getElementById('atencion-resultado').classList.add('hidden');
+    const modal = document.getElementById('modal-atencion-cliente');
+    modal.classList.remove('hidden');
+    setTimeout(() => { modal.classList.remove('opacity-0'); modal.querySelector('.bg-dark-800').classList.remove('scale-95'); }, 10);
+};
+
+window.cerrarModalAtencionCliente = () => {
+    const modal = document.getElementById('modal-atencion-cliente');
+    modal.classList.add('opacity-0');
+    modal.querySelector('.bg-dark-800').classList.add('scale-95');
+    setTimeout(() => { modal.classList.add('hidden'); }, 200);
+};
+
+window.buscarOrdenAtencionCliente = (e) => {
+    e.preventDefault();
+    const query = document.getElementById('input-busqueda-atencion').value.trim().toUpperCase();
+    const ventas = JSON.parse(localStorage.getItem(LS_VENTAS_GENERAL)) || [];
+
+    // Buscar por código de ticket directo o compras de un DNI
+    let resultados = ventas.filter(v => v.codigo === query || v.numeroDoc === query);
+
+    const contenedor = document.getElementById('atencion-resultado');
+    if (resultados.length === 0) {
+        contenedor.innerHTML = `<p class="text-brand-red text-center py-4">No se encontró ninguna orden con "${query}".</p>`;
+        contenedor.classList.remove('hidden');
+        return;
+    }
+
+    // Renderizamos los resultados (normalmente será uno si es por código, o varios si es por DNI)
+    let html = '';
+    resultados.forEach(compra => {
+        const estadoPelicula = compra.estado || 'activa';
+
+        let esCancelada = false;
+        // Verificamos si la función está cancelada en baseDatosPeliculas
+        const p = baseDatosPeliculas[compra.idPelicula];
+        if (p && p.horarios && p.horarios[compra.fechaFuncion]) {
+            p.horarios[compra.fechaFuncion].forEach(formato => {
+                formato.horas.forEach(h => {
+                    const horaRaw = h.hora || h;
+                    const hSala = h.sala || 1;
+                    const hEstado = h.estado || 'programada';
+                    // Extraer solo el número de la sala si es objeto
+                    const salaNum = typeof compra.sala === 'string' ? Number(compra.sala.replace('sala_', '')) : Number(compra.sala);
+                    if (horaRaw === compra.horaFuncion && Number(hSala) === salaNum && hEstado === 'cancelada') {
+                        esCancelada = true;
+                    }
+                });
+            });
+        }
+
+        const badgeColor = compra.estado === 'reembolsada' ? 'bg-gray-500' : (esCancelada ? 'bg-brand-red' : 'bg-green-500');
+        const badgeText = compra.estado === 'reembolsada' ? 'REEMBOLSADA' : (esCancelada ? 'FUNCIÓN CANCELADA' : 'VÁLIDA');
+
+        // Determinar título
+        const titulo = compra.pelicula || compra.peliculaTitulo || 'Pedido de Dulcería';
+        const formatoStr = compra.formato ? `(${compra.formato})` : '';
+        const salaStr = compra.sala ? `&bull; Sala ${typeof compra.sala === 'string' ? compra.sala.replace('sala_', '') : compra.sala}` : '';
+
+        html += `
+            <div class="bg-dark-900 border border-white/10 rounded-xl p-4 mb-2">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <span class="text-white font-bold text-lg">${compra.codigo}</span>
+                        <span class="ml-2 ${badgeColor} text-white text-xs font-bold px-2 py-1 rounded">${badgeText}</span>
+                    </div>
+                    <div class="text-right text-gray-400 text-sm">
+                        ${compra.fechaFuncion || ''} ${compra.horaFuncion ? '&bull; ' + compra.horaFuncion : ''} ${salaStr}
+                    </div>
+                </div>
+                <p class="text-white text-sm mb-1">${titulo} ${formatoStr}</p>
+                <p class="text-gray-400 text-sm mb-3">${compra.asientos ? compra.asientos.length : 0} Asientos: ${compra.asientos ? compra.asientos.join(', ') : 'Ninguno'}</p>
+        `;
+
+        if (esCancelada && compra.estado !== 'reembolsada') {
+            html += `
+                <div class="flex gap-2 mt-2 pt-3 border-t border-white/10">
+                    <button onclick="reembolsarOrden('${compra.codigo}')" class="flex-1 bg-dark-800 border border-gray-600 hover:border-white text-white py-2 rounded font-bold transition-colors text-sm">Reembolsar</button>
+                    <button onclick="iniciarReubicacion('${compra.codigo}')" class="flex-1 bg-brand-yellow hover:bg-brand-yellow/80 text-black py-2 rounded font-bold transition-colors text-sm">Reubicar</button>
+                </div>
+            `;
+        }
+        html += `</div>`;
+    });
+
+    contenedor.innerHTML = html;
+    contenedor.classList.remove('hidden');
+};
+
+window.reembolsarOrden = async (idOrden) => {
+    const confirmar = await confirmarAccion({
+        titulo: '¿Reembolsar Orden?',
+        mensaje: `Se reembolsará el ticket ${idOrden} y se liberarán sus asientos. Esta acción no se puede deshacer.`,
+        tipo: 'advertencia', textoConfirmar: 'Sí, Reembolsar', textoCancelar: 'Cancelar'
+    });
+    if (!confirmar) return;
+
+    const ventasGlobal = JSON.parse(localStorage.getItem(LS_VENTAS_GENERAL)) || [];
+    const idx = ventasGlobal.findIndex(v => v.codigo === idOrden);
+    if (idx === -1) return;
+
+    const orden = ventasGlobal[idx];
+    orden.estado = 'reembolsada';
+    localStorage.setItem(LS_VENTAS_GENERAL, JSON.stringify(ventasGlobal));
+
+    // Liberar los asientos
+    let ventasAsientos = JSON.parse(localStorage.getItem(LS_VENTAS_ASIENTOS)) || [];
+    ventasAsientos = ventasAsientos.filter(va => va.id !== idOrden);
+    localStorage.setItem(LS_VENTAS_ASIENTOS, JSON.stringify(ventasAsientos));
+
+    // Liberar temporales por si acaso
+    limpiarEstadoPedido();
+
+    mostrarToast(`La orden ${idOrden} ha sido reembolsada y los asientos liberados.`, 'exito');
+    cerrarModalAtencionCliente();
+};
+
+window.iniciarReubicacion = (idOrden) => {
+    const ventasGlobal = JSON.parse(localStorage.getItem(LS_VENTAS_GENERAL)) || [];
+    const orden = ventasGlobal.find(v => v.codigo === idOrden);
+    if (!orden) return;
+
+    estadoPedido.modoReubicar = true;
+    estadoPedido.ticketReubicando = orden;
+    estadoPedido.cantidadAsientosRequeridos = orden.asientos ? orden.asientos.length : 0;
+
+    document.getElementById('banner-reubicar-ticket').textContent = idOrden;
+    document.getElementById('banner-modo-reubicar').classList.remove('hidden');
+
+    cerrarModalAtencionCliente();
+    cambiarVista(vistaActualVisible, 'vista-inicio');
+    mostrarToast(`Modo Reubicación activo. Selecciona una nueva función y EXACTAMENTE ${estadoPedido.cantidadAsientosRequeridos} asientos.`, 'info');
+};
+
+window.cancelarModoReubicacion = () => {
+    delete estadoPedido.modoReubicar;
+    delete estadoPedido.ticketReubicando;
+    delete estadoPedido.cantidadAsientosRequeridos;
+
+    document.getElementById('banner-modo-reubicar').classList.add('hidden');
+    limpiarEstadoPedido();
+    cambiarVista(vistaActualVisible, 'vista-inicio');
+    mostrarToast('Reubicación cancelada.', 'info');
 };
