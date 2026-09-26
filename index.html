@@ -2104,6 +2104,11 @@
                             class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
                     </div>
                     <div>
+                        <label class="block text-gray-400 text-sm mb-1">DNI (Documento de Identidad)</label>
+                        <input type="text" id="reg-dni" required pattern="[0-9]{8}" maxlength="8"
+                            class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
+                    </div>
+                    <div>
                         <label class="block text-gray-400 text-sm mb-1">Correo Electrónico</label>
                         <input type="email" id="reg-correo" required
                             class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
@@ -2114,10 +2119,8 @@
                             class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
                     </div>
                     <div>
-                        <label class="block text-gray-400 text-sm mb-1">Fecha de Nacimiento <span
-                                class="text-gray-600 normal-case">(opcional — para tu entrada de
-                                cumpleaños)</span></label>
-                        <input type="date" id="reg-fecha-nacimiento"
+                        <label class="block text-gray-400 text-sm mb-1">Fecha de Nacimiento <span class="text-xs text-gray-500">(Debes ser mayor de 18 años)</span></label>
+                        <input type="date" id="reg-fecha-nacimiento" required
                             class="w-full bg-dark-900 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-brand-red">
                     </div>
                     <label class="flex items-start gap-2 text-xs text-gray-400 cursor-pointer select-none">

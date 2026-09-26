@@ -1884,16 +1884,39 @@ window.cerrarModalesAuth = () => {
 window.manejarRegistro = (e) => {
     e.preventDefault();
     const inputNombre = document.getElementById('reg-nombre');
+    const inputDni = document.getElementById('reg-dni');
     const inputCorreo = document.getElementById('reg-correo');
     const inputContrasena = document.getElementById('reg-contrasena');
+    const inputNacimiento = document.getElementById('reg-fecha-nacimiento');
 
     // 1) Validación "frontend"
     const valido = validarFormulario([
         { input: inputNombre, prueba: () => Validadores.soloTexto(inputNombre.value), mensaje: 'Ingresa un nombre válido (solo letras).' },
+        { input: inputDni, prueba: () => /^\d{8}$/.test(inputDni.value), mensaje: 'Ingresa un DNI válido de 8 dígitos.' },
         { input: inputCorreo, prueba: () => Validadores.correo(inputCorreo.value), mensaje: 'Ingresa un correo electrónico válido.' },
         { input: inputContrasena, prueba: () => Validadores.contrasena(inputContrasena.value), mensaje: 'La contraseña debe tener al menos 6 caracteres.' }
     ]);
     if (!valido) return;
+
+    // Validación de Edad (Mayor a 18 años)
+    if (inputNacimiento && inputNacimiento.value) {
+        const fechaNac = new Date(inputNacimiento.value);
+        const hoy = new Date();
+        let edad = hoy.getFullYear() - fechaNac.getFullYear();
+        const mes = hoy.getMonth() - fechaNac.getMonth();
+        if (mes < 0 || (mes === 0 && hoy.getDate() < fechaNac.getDate())) {
+            edad--;
+        }
+        if (edad < 18) {
+            marcarCampoInvalido(inputNacimiento, 'Debes ser mayor de 18 años para registrarte.');
+            mostrarToast('Debes ser mayor de 18 años para registrarte.', 'error');
+            return;
+        }
+    } else {
+        marcarCampoInvalido(inputNacimiento, 'Por favor, ingresa tu fecha de nacimiento.');
+        mostrarToast('Por favor, ingresa tu fecha de nacimiento.', 'error');
+        return;
+    }
 
     // Módulo 2 — Ley N° 29733: checkbox obligatorio de aceptación de Políticas de Privacidad.
     const checkPrivacidad = document.getElementById('check-privacidad-registro');
@@ -1903,12 +1926,13 @@ window.manejarRegistro = (e) => {
     }
 
     const nombre = inputNombre.value.trim();
+    const dni = inputDni.value.trim();
     const correo = inputCorreo.value.trim().toLowerCase();
     const contrasena = inputContrasena.value;
-    const fechaNacimiento = document.getElementById('reg-fecha-nacimiento')?.value || null; // Módulo 7: opcional, habilita el beneficio de cumpleaños
+    const fechaNacimiento = inputNacimiento.value;
 
     // 2) Validación "backend" (repetida antes de tocar el almacenamiento)
-    if (!Validadores.soloTexto(nombre) || !Validadores.correo(correo) || !Validadores.contrasena(contrasena)) {
+    if (!Validadores.soloTexto(nombre) || !/^\d{8}$/.test(dni) || !Validadores.correo(correo) || !Validadores.contrasena(contrasena)) {
         mostrarToast('No se pudo validar la información del registro.', 'error');
         return;
     }
@@ -1923,7 +1947,7 @@ window.manejarRegistro = (e) => {
 
     // MÓDULO 7: todo socio nuevo nace con su código de socio y su saldo de puntos en 0.
     const nuevoUsuario = {
-        nombre, correo, contrasena, rol: 'cliente', compras: [], metodoPago: null,
+        nombre, dni, correo, contrasena, rol: 'cliente', compras: [], metodoPago: null,
         fechaNacimiento, codigoSocio: generarCodigoSocioUnico(usuarios), puntos: 0, historialPuntos: [], cumpleUsadoEnAnio: null
     };
     usuarios.push(nuevoUsuario);
